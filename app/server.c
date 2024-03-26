@@ -69,7 +69,7 @@ int main() {
 		send(new_socket, responsePing, strlen(responsePing), 0);
 	}
 
-
+	//Added comment
 	
 	close(server_fd);
 
