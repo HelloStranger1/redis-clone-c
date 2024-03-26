@@ -6,23 +6,22 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
+#include <pthread.h>
 
 #define BUFFER_SIZE 1024
 
+void *handle_client(void *arg);
+
 int main() {
 	char buffer[BUFFER_SIZE] = {0};
-	// Disable output buffering
-	setbuf(stdout, NULL);
-
-	// You can use print statements as follows for debugging, they'll be visible when running tests.
-	printf("Logs from your program will appear here!\n");
-
-	// Uncomment this block to pass the first stage
-	//
 	int server_fd, client_addr_len;
 	struct sockaddr_in client_addr;
+	pthread_t tid;
+	// Disable output buffering
+	setbuf(stdout, NULL);
 	
 	server_fd = socket(AF_INET, SOCK_STREAM, 0);
+
 	if (server_fd == -1) {
 		printf("Socket creation failed: %s...\n", strerror(errno));
 		return 1;
@@ -59,14 +58,17 @@ int main() {
 	printf("Client connected\n");
 
 	for (;;) {
-		memset(buffer, 0, BUFFER_SIZE);
-		if (read(new_socket, buffer, BUFFER_SIZE) == 0) {
-			printf("Client disconnected\n");
-			break;
+		if ((new_socket = accept(server_fd, (struct sockadrr *)&client_addr, (socklen_t*)&client_addr_len)) < 0) {
+			perror("Accept failed.");
+			exit(EXIT_FAILURE);
 		}
-		printf("Recieved message: %s\n", buffer);
-		char* responsePing = "+PONG\r\n";
-		send(new_socket, responsePing, strlen(responsePing), 0);
+
+		if (pthread_create(&tid, NULL, handle_client, (void *)&new_socket) != 0) {
+			perror("Thread creation failed.");
+			exit(EXIT_FAILURE);
+		}
+
+		pthread_detach(tid);
 	}
 
 	//Added comment
@@ -74,4 +76,23 @@ int main() {
 	close(server_fd);
 
 	return 0;
+}
+
+void *handle_client(void *arg) {
+	int client_socket = *((int *)arg);
+	char buffer[BUFFER_SIZE] = {0};
+
+	for (;;) {
+		memset(buffer, 0, BUFFER_SIZE);
+		if (read(client_socket, buffer, BUFFER_SIZE) == 0) {
+			printf("Client disconnected\n");
+			break;
+		}
+		printf("Recieved message: %s\n", buffer);
+		char* responsePing = "+PONG\r\n";
+		send(client_socket, responsePing, strlen(responsePing), 0);
+	}
+
+	close(client_socket);
+	pthread_exit(NULL);
 }
