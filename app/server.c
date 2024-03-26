@@ -7,7 +7,10 @@
 #include <errno.h>
 #include <unistd.h>
 
+#define BUFFER_SIZE 1024
+
 int main() {
+	char buffer[BUFFER_SIZE] = {0};
 	// Disable output buffering
 	setbuf(stdout, NULL);
 
@@ -52,8 +55,21 @@ int main() {
 	printf("Waiting for a client to connect...\n");
 	client_addr_len = sizeof(client_addr);
 	
-	accept(server_fd, (struct sockaddr *) &client_addr, &client_addr_len);
+	int new_socket = accept(server_fd, (struct sockaddr *) &client_addr, &client_addr_len);
 	printf("Client connected\n");
+
+	for (;;) {
+		memset(buffer, 0, BUFFER_SIZE);
+		if (read(new_socket, buffer, BUFFER_SIZE) == 0) {
+			printf("Client disconnected\n");
+			break;
+		}
+		printf("Recieved message: %s\n", buffer);
+		char* responsePing = "+PONG\r\n";
+		send(new_socket, responsePing, strlen(responsePing), 0);
+	}
+
+
 	
 	close(server_fd);
 
