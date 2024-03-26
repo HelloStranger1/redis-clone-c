@@ -14,7 +14,7 @@ void *handle_client(void *arg);
 
 int main() {
 	char buffer[BUFFER_SIZE] = {0};
-	int server_fd, client_addr_len;
+	int server_fd, client_addr_len, new_socket;
 	struct sockaddr_in client_addr;
 	pthread_t tid;
 	// Disable output buffering
@@ -54,11 +54,8 @@ int main() {
 	printf("Waiting for a client to connect...\n");
 	client_addr_len = sizeof(client_addr);
 	
-	int new_socket = accept(server_fd, (struct sockaddr *) &client_addr, &client_addr_len);
-	printf("Client connected\n");
-
 	for (;;) {
-		if ((new_socket = accept(server_fd, (struct sockadrr *)&client_addr, (socklen_t*)&client_addr_len)) < 0) {
+		if ((new_socket = accept(server_fd, (struct sockaddr *)&client_addr, (socklen_t*)&client_addr_len)) < 0) {
 			perror("Accept failed.");
 			exit(EXIT_FAILURE);
 		}
