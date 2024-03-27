@@ -64,6 +64,7 @@ static RespData* parse_resp_blk_string(const char** c) {
     memcpy(resp->data.blkString.chars, (*c), strLen);
     resp->data.blkString.chars[strLen] = '\0';
     (*c) += strLen + 2;
+    printf("(blk) len is %d and we parsed (blk): %s\n", resp->data.blkString.len, resp->data.blkString.chars);
     return resp;
 }
 
