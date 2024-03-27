@@ -108,10 +108,10 @@ void *handle_client(void *arg) {
 			exit(EXIT_FAILURE);
 		}
 
-		if(strcasecmp(command->data.blkString.chars, pingCmd)) {
+		if(!strcasecmp(command->data.blkString.chars, pingCmd)) {
 			char* responsePing = "+PONG\r\n";
 			send(client_socket, responsePing, strlen(responsePing), 0);
-		} else if (strcasecmp(command->data.blkString.chars, echoCmd)) {
+		} else if (!strcasecmp(command->data.blkString.chars, echoCmd)) {
 			RespData* arg = data->data.array.data[1];
 			printf("We parsed that we should echo: %s", arg->data.blkString.chars);
 			char* response = convert_data_to_blk(arg);
