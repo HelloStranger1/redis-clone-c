@@ -58,7 +58,7 @@ static RespData* parse_resp_blk_string(const char* c) {
         return resp;
     }
 
-    int strLen = convert_to_uint(c);
+    int strLen = convert_to_int(c);
     resp->data.blkString.len = strLen;
     resp->data.blkString.chars = malloc(strLen + 1);
     memcpy(resp->data.blkString.chars, c, strLen);
@@ -109,11 +109,11 @@ char* convert_data_to_blk(RespData* input) {
     if (input->type != RESP_BULK_STRING) {
         return "";
     }
-    size_t inputLength = input->data.blkString.len;
-    size_t encodedLength = inputLength + sprintf(NULL, 0, "$%d\r\n", inputLength) + 2;
+    int inputLength = input->data.blkString.len;
+    int encodedLength = inputLength + sprintf(NULL, "$%d\r\n", inputLength) + 2;
     char* encodedString = (char*) malloc(encodedLength + 1);
 
-    sprintf(encodedString, encodedLength + 1, "$%zu\r\n", inputLength);
+    sprintf(encodedString, "$%zu\r\n", inputLength);
 
     strcpy(encodedString + strlen(encodedString), input->data.blkString.chars);
 

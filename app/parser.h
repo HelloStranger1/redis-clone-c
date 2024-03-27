@@ -3,8 +3,6 @@
 
 #define MAX_ARRAY_SIZE 64
 
-typedef struct RespData RespData;
-
 typedef enum {
     RESP_SIMPLE_STRING,
     RESP_SIMPLE_ERROR,
@@ -26,7 +24,7 @@ typedef enum {
 // The main thing. everything is just nested inside.
 
 
-struct RespData {
+typedef struct RespData {
     DataType type;
     union {
         char* simpleString;
@@ -41,7 +39,7 @@ struct RespData {
             struct RespData** data;
         } array;
     } data;
-};
+} RespData;
 
 RespData* parse_resp_data(const char* input);
 char* convert_data_to_blk(RespData* input);
