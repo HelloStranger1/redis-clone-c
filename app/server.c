@@ -95,7 +95,7 @@ void *handle_client(void *arg) {
 		}
 		printf("Recieved message: %s\n", buffer);
 	
-		RespData* data = parse_resp_data(buffer);
+		RespData* data = parse_resp_data(&buffer);
 		if(data->type != RESP_ARRAY) {
 			printf("Expected array. wtf");
 			exit(EXIT_FAILURE);

@@ -9,24 +9,24 @@
  * Like atoi, except looks for \r\n instead of \0.
  * Expects only to recieve an unsigned int.
 */
-static int convert_to_int(const char* c) {
+static int convert_to_int(const char** c) {
     unsigned int value = 0;
-    while(*c != '\r') {
-        if (*c >= '0' && *c <= '9') {
+    while(**c != '\r') {
+        if (**c >= '0' && **c <= '9') {
             value *= 10;
-            value += (int)(*c - '0');
+            value += (int)(**c - '0');
         } else {
             // Unexpected
             return -1;
         }
-        c++;
+        *c++;
     }
-    c += 2; // Skip \r\n
+    *c += 2; // Skip \r\n
     return value;
 }
 
 
-static RespData* parse_resp_arr(const char* c) {
+static RespData* parse_resp_arr(const char** c) {
     RespData* resp = malloc(sizeof(*resp));
     resp->type = RESP_ARRAY;
 
@@ -47,12 +47,12 @@ static RespData* parse_resp_arr(const char* c) {
     return resp;
 }
 
-static RespData* parse_resp_blk_string(const char* c) {
+static RespData* parse_resp_blk_string(const char** c) {
     RespData* resp = malloc(sizeof(*resp));
     resp->type = RESP_BULK_STRING;
 
-    if (*c == '-' && *(c+1) == '1') {
-        c += 4;
+    if (*c == '-' && *(*c+1)== '1') {
+        *c += 4;
         resp->data.blkString.len = 0;
         resp->data.blkString.chars = NULL;
         return resp;
@@ -61,19 +61,19 @@ static RespData* parse_resp_blk_string(const char* c) {
     int strLen = convert_to_int(c);
     resp->data.blkString.len = strLen;
     resp->data.blkString.chars = malloc(strLen + 1);
-    memcpy(resp->data.blkString.chars, c, strLen);
+    memcpy(resp->data.blkString.chars, *c, strLen);
     resp->data.blkString.chars[strLen] = '\0';
-    c += strLen + 2;
-    printf("Tried to convert to bulk str. c rn is: %s. the len we got: %d, and the string: %s \n", c, resp->data.blkString.len, resp->data.blkString.chars);
+    *c += strLen + 2;
+    printf("Tried to convert to bulk str. c rn is: %s. the len we got: %d, and the string: %s \n", *c, resp->data.blkString.len, resp->data.blkString.chars);
     return resp;
 }
 
-static RespData* parse_resp_integer(const char* c) {
+static RespData* parse_resp_integer(const char** c) {
     RespData* resp = malloc(sizeof(*resp));
     resp->type = RESP_INTEGER;
-    bool isNegative = (*c == '-');
-    if (*c == '+' || *c == '-') {
-        c++;
+    bool isNegative = (**c == '-');
+    if (**c == '+' || **c == '-') {
+        *c++;
     }
 
     resp->data.integer = convert_to_int(c);
@@ -85,9 +85,11 @@ static RespData* parse_resp_integer(const char* c) {
 }
 
 
-RespData* parse_resp_data(const char* input) { 
+RespData* parse_resp_data(const char** input) { 
     printf("input is: %s\n", input);
-    switch (*input) {
+    char type = **input;
+    *input++;
+    switch (type) {
         case '+': 
             printf("simple strings not yet implemented");
             return NULL;
@@ -95,11 +97,11 @@ RespData* parse_resp_data(const char* input) {
             printf("Errors not yet implemented");
             return NULL;
         case ':': 
-            return parse_resp_integer(++input);
+            return parse_resp_integer(input);
         case '$': 
-            return parse_resp_blk_string(++input);
+            return parse_resp_blk_string(input);
         case '*': 
-            return parse_resp_arr(++input);
+            return parse_resp_arr(input);
         default:
             printf("either not yet implemented or uknown type");
             return NULL;
