@@ -91,12 +91,12 @@ void *handle_client(void *arg) {
 
 	for (;;) {
 		memset(buffer, 0, BUFFER_SIZE);
-		if ((len = read(client_socket, buffer, BUFFER_SIZE - 1)) == 0) {
+		if ((len = read(client_socket, buffer, BUFFER_SIZE)) == 0) {
 			printf("Client disconnected\n");
 			break;
 		}
-		buffer[len] = '\0';
 		printf("Recieved message: %s\n", buffer);
+	
 		RespData* data = parse_resp_data(buffer);
 		if(data->type != RESP_ARRAY) {
 			printf("Expected array. wtf");
