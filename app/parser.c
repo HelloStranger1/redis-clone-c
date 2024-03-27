@@ -139,7 +139,7 @@ void free_resp(RespData* resp) {
             break;
         case RESP_ARRAY:
             for (int i = 0; i < resp->data.array.len; i++) {
-                free_resp(&resp->data.array.data[i]);
+                free_resp(resp->data.array.data[i]);
             }
             free(resp->data.array.data);
             break;
