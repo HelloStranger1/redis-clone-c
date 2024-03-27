@@ -64,7 +64,7 @@ static RespData* parse_resp_blk_string(const char* c) {
     memcpy(resp->data.blkString.chars, c, strLen);
     resp->data.blkString.chars[strLen] = '\0';
     c += strLen + 2;
-
+    printf("Tried to convert to bulk str. c rn is: %s. the len we got: %d, and the string: %s \n", c, resp->data.blkString.len, resp->data.blkString.chars);
     return resp;
 }
 
@@ -86,6 +86,7 @@ static RespData* parse_resp_integer(const char* c) {
 
 
 RespData* parse_resp_data(const char* input) { 
+    printf("input is: %s\n", input);
     switch (*input) {
         case '+': 
             printf("simple strings not yet implemented");
