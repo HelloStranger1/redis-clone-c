@@ -8,9 +8,12 @@
 #include <unistd.h>
 #include <pthread.h>
 
+#include "parser.h"
+
 #define BUFFER_SIZE 1024
 
 void *handle_client(void *arg);
+
 
 int main() {
 	char buffer[BUFFER_SIZE] = {0};
@@ -75,19 +78,45 @@ int main() {
 	return 0;
 }
 
+
+
 void *handle_client(void *arg) {
 	int client_socket = *((int *)arg);
 	char buffer[BUFFER_SIZE] = {0};
+	int len;
+
+
+	char pingCmd[] = "PING";
+	char echoCmd[] = "ECHO";
 
 	for (;;) {
 		memset(buffer, 0, BUFFER_SIZE);
-		if (read(client_socket, buffer, BUFFER_SIZE) == 0) {
+		if ((len = read(client_socket, buffer, BUFFER_SIZE - 1)) == 0) {
 			printf("Client disconnected\n");
 			break;
 		}
+		buffer[len] = '\0';
 		printf("Recieved message: %s\n", buffer);
-		char* responsePing = "+PONG\r\n";
-		send(client_socket, responsePing, strlen(responsePing), 0);
+		RespData* data = parse_resp_data(buffer);
+		if(data->type != RESP_ARRAY) {
+			printf("Expected array. wtf");
+			exit(EXIT_FAILURE);
+		}
+		RespData* command = data->data.array.data[0];
+		if (command->type != RESP_BULK_STRING) {
+			printf("command should be a bulk string");
+			exit(EXIT_FAILURE);
+		}
+
+		if(memcmp(command->data.blkString.chars, pingCmd, strlen(pingCmd))) {
+			char* responsePing = "+PONG\r\n";
+			send(client_socket, responsePing, strlen(responsePing), 0);
+		} else if (memcmp(command->data.blkString.chars, echoCmd, strlen(echoCmd))) {
+			RespData* arg = data->data.array.data[1];
+			printf("We parsed that we should echo: %s", arg->data.blkString.chars);
+			char* response = convert_data_to_blk(arg);
+			send(client_socket, response, strlen(response), 0);
+		}
 	}
 
 	close(client_socket);
