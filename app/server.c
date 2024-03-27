@@ -4,6 +4,7 @@
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <string.h>
+#include <strings.h>
 #include <errno.h>
 #include <unistd.h>
 #include <pthread.h>
@@ -93,6 +94,7 @@ void *handle_client(void *arg) {
 			printf("Client disconnected\n");
 			break;
 		}
+		
 		printf("Recieved message: %s\n", buffer);
 		char* tmp = buffer;
 		RespData* data = parse_resp_data(&tmp);
@@ -106,10 +108,10 @@ void *handle_client(void *arg) {
 			exit(EXIT_FAILURE);
 		}
 
-		if(memcmp(command->data.blkString.chars, pingCmd, strlen(pingCmd))) {
+		if(strcasecmp(command->data.blkString.chars, pingCmd)) {
 			char* responsePing = "+PONG\r\n";
 			send(client_socket, responsePing, strlen(responsePing), 0);
-		} else if (memcmp(command->data.blkString.chars, echoCmd, strlen(echoCmd))) {
+		} else if (strcasecmp(command->data.blkString.chars, echoCmd)) {
 			RespData* arg = data->data.array.data[1];
 			printf("We parsed that we should echo: %s", arg->data.blkString.chars);
 			char* response = convert_data_to_blk(arg);
