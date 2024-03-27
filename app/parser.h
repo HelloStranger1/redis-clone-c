@@ -26,7 +26,7 @@ typedef enum {
 // The main thing. everything is just nested inside.
 
 
-typedef struct {
+struct RespData {
     DataType type;
     union {
         char* simpleString;
@@ -41,7 +41,7 @@ typedef struct {
             struct RespData** data;
         } array;
     } data;
-} RespData;
+};
 
 RespData* parse_resp_data(const char* input);
 char* convert_data_to_blk(RespData* input);

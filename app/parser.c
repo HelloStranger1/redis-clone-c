@@ -30,7 +30,7 @@ static RespData* parse_resp_arr(const char* c) {
     RespData* resp = malloc(sizeof(*resp));
     resp->type = RESP_ARRAY;
 
-    int itemCount = convert_to_uint(c);
+    int itemCount = convert_to_int(c);
     if (itemCount == -1) {
        printf("something fucked up, debug"); 
        free(resp);
@@ -109,13 +109,13 @@ char* convert_data_to_blk(RespData* input) {
     if (input->type != RESP_BULK_STRING) {
         return "";
     }
-    int inputLength = input->data.blkString.len;
-    int encodedLength = inputLength + sprintf(NULL, 0, "$%d\r\n", inputLength) + 2;
+    size_t inputLength = input->data.blkString.len;
+    size_t encodedLength = inputLength + sprintf(NULL, 0, "$%d\r\n", inputLength) + 2;
     char* encodedString = (char*) malloc(encodedLength + 1);
 
-    sprintf(encodedString, encodedLength + 1, "$%d\r\n", inputLength);
+    sprintf(encodedString, encodedLength + 1, "$%zu\r\n", inputLength);
 
-    strcpy(encodedString + strlen(encodedString), input);
+    strcpy(encodedString + strlen(encodedString), input->data.blkString.chars);
 
     strcat(encodedString, "\r\n");
 
@@ -139,7 +139,7 @@ void free_resp(RespData* resp) {
             break;
         case RESP_ARRAY:
             for (int i = 0; i < resp->data.array.len; i++) {
-                free_resp(resp->data.array.data[i]);
+                free_resp(&resp->data.array.data[i]);
             }
             free(resp->data.array.data);
             break;
