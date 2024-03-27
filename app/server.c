@@ -83,15 +83,13 @@ int main() {
 void *handle_client(void *arg) {
 	int client_socket = *((int *)arg);
 	char buffer[BUFFER_SIZE] = {0};
-	int len;
-
 
 	char pingCmd[] = "PING";
 	char echoCmd[] = "ECHO";
 
 	for (;;) {
 		memset(buffer, 0, BUFFER_SIZE);
-		if ((len = read(client_socket, buffer, BUFFER_SIZE)) == 0) {
+		if ((read(client_socket, buffer, BUFFER_SIZE)) == 0) {
 			printf("Client disconnected\n");
 			break;
 		}
