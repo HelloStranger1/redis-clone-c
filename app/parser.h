@@ -41,7 +41,7 @@ typedef struct RespData {
     } data;
 } RespData;
 
-RespData* parse_resp_data(const char** input);
+RespData* parse_resp_data(char** input);
 char* convert_data_to_blk(RespData* input);
 void free_resp(RespData* resp);
 #endif

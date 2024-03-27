@@ -9,7 +9,7 @@
  * Like atoi, except looks for \r\n instead of \0.
  * Expects only to recieve an unsigned int.
 */
-static int convert_to_int(const char** c) {
+static int convert_to_int(char** c) {
     unsigned int value = 0;
     while(*(*c) != '\r') {
         if (*(*c) >= '0' && *(*c) <= '9') {
@@ -26,7 +26,8 @@ static int convert_to_int(const char** c) {
 }
 
 
-static RespData* parse_resp_arr(const char** c) {
+static RespData* parse_resp_arr(char** c) {
+    printf("Parsing arr. input is: %s", *c);
     RespData* resp = malloc(sizeof(*resp));
     resp->type = RESP_ARRAY;
 
@@ -47,7 +48,7 @@ static RespData* parse_resp_arr(const char** c) {
     return resp;
 }
 
-static RespData* parse_resp_blk_string(const char** c) {
+static RespData* parse_resp_blk_string(char** c) {
     RespData* resp = malloc(sizeof(*resp));
     resp->type = RESP_BULK_STRING;
 
@@ -68,7 +69,7 @@ static RespData* parse_resp_blk_string(const char** c) {
     return resp;
 }
 
-static RespData* parse_resp_integer(const char** c) {
+static RespData* parse_resp_integer(char** c) {
     RespData* resp = malloc(sizeof(*resp));
     resp->type = RESP_INTEGER;
     bool isNegative = (*(*c) == '-');
@@ -85,10 +86,12 @@ static RespData* parse_resp_integer(const char** c) {
 }
 
 
-RespData* parse_resp_data(const char** input) { 
-    printf("input is: %s\n", input);
+RespData* parse_resp_data(char** input) { 
+    printf("input is: %s\n", *input);
     char type = **input;
-    *input++;
+    printf("%c\n", **input);
+    (*input)++;
+    printf("%c\n", **input);
     switch (type) {
         case '+': 
             printf("simple strings not yet implemented");
@@ -113,10 +116,11 @@ char* convert_data_to_blk(RespData* input) {
         return "";
     }
     int inputLength = input->data.blkString.len;
-    int encodedLength = inputLength + sprintf(NULL, "$%d\r\n", inputLength) + 2;
+    char idk[1000];
+    int encodedLength = inputLength + sprintf(idk, "$%d\r\n", inputLength) + 2;
     char* encodedString = (char*) malloc(encodedLength + 1);
 
-    sprintf(encodedString, "$%zu\r\n", inputLength);
+    sprintf(encodedString, "$%u\r\n", inputLength);
 
     strcpy(encodedString + strlen(encodedString), input->data.blkString.chars);
 
