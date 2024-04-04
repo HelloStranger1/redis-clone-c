@@ -283,3 +283,4 @@ void *handle_client(void *arg) {
 
 	close(client_socket);
 	pthread_exit(NULL);
+}
