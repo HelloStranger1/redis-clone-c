@@ -270,6 +270,7 @@ void *handle_client(void *arg) {
 			exit(EXIT_FAILURE);
 		}
 
+		printf("We got: %s", AS_BLK_STR(command)->chars);
 		if(!strcasecmp(AS_BLK_STR(command)->chars, pingCmd)) {
 			char* responsePing = "+PONG\r\n";
 			send(client_socket, responsePing, strlen(responsePing), 0);
