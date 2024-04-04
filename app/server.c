@@ -170,7 +170,7 @@ int main() {
 					}
 					event.data.fd = infd;
 					event.events = EPOLLIN | EPOLLET;
-					s = epoll_ctl(efd, EPOLL_CTL_ADD, infd, &events);
+					s = epoll_ctl(efd, EPOLL_CTL_ADD, infd, &event);
 					if (s == -1) {
 						perror("epoll_ctl");
 						return 1;
