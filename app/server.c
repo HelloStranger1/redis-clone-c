@@ -214,6 +214,7 @@ int main() {
 						exit(EXIT_FAILURE);
 					}
 
+					printf("We parsed %s", AS_BLK_STR(command)->chars);
 
 					if(!strcasecmp(AS_BLK_STR(command)->chars, pingCmd)) {
 						char* responsePing = "+PONG\r\n";
