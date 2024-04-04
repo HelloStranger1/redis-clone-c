@@ -5,44 +5,59 @@
 
 #include "parser.h"
 
+#define ALLOCATE_ARR(type, count) (type*) malloc(sizeof(type) * count)
+
+static bool isDigit(char c) {
+    return c >= '0' && c <= '9';
+}
+
+static bool isEmptyString(char* c) {
+    return *c == '-' && *(c + 1) == '1';
+}
+
+
 /**
  * Like atoi, except looks for \r\n instead of \0.
  * Expects only to recieve an unsigned int.
 */
 static int convert_to_int(char** c) {
     unsigned int value = 0;
-    while(*(*c) != '\r') {
-        if (*(*c) >= '0' && *(*c) <= '9') {
-            value *= 10;
-            value += (int)(*(*c) - '0');
-        } else {
-            // Unexpected
+    while(**c != '\r') {
+        if (!isDigit(**c)) {
             return -1;
         }
-        (*c)++;
+
+        value *= 10;
+        value += (int)(**c - '0');
+
+        *c++;
     }
-    (*c) += 2; // Skip \r\n
+    *c += 2; // Skip \r\n
     return value;
 }
 
 
 static RespData* parse_resp_arr(char** c) {
-    printf("Parsing arr. input is: %s", *c);
     RespData* resp = malloc(sizeof(*resp));
+    if (!resp) {
+        fprintf(stderr, "Couldn't allocate memory.");
+        exit(EXIT_FAILURE);
+    }
+
     resp->type = RESP_ARRAY;
 
     int itemCount = convert_to_int(c);
     if (itemCount == -1) {
-       printf("something fucked up, debug"); 
+       printf("Couldn't convert length to number. original string was: %s", ((*c) - 2)); 
        free(resp);
-       exit(EXIT_FAILURE);
+       return NULL;
     }
 
-    resp->data.array.len = itemCount;
-    resp->data.array.data = malloc(itemCount * sizeof(RespData*));
+    resp->as.arr->length = itemCount;
+    resp->as.arr->values = ALLOCATE_ARR(RespData*, itemCount);
 
     for (int i = 0; i < itemCount; i++) {
-        resp->data.array.data[i] = parse_resp_data(c);
+        AS_ARR(resp)->values[i] = parse_resp_data(c);
     }
 
     return resp;
@@ -50,36 +65,46 @@ static RespData* parse_resp_arr(char** c) {
 
 static RespData* parse_resp_blk_string(char** c) {
     RespData* resp = malloc(sizeof(*resp));
+    if (!resp) {
+        fprintf(stderr, "Couldn't allocate memory.");
+        exit(EXIT_FAILURE);
+    }
+
     resp->type = RESP_BULK_STRING;
 
-    if (*(*c) == '-' && *((*c)+1) == '1') {
-        (*c) += 4;
-        resp->data.blkString.len = 0;
-        resp->data.blkString.chars = NULL;
+    if (isEmptyString(*c)) {
+        *c += 4; //Skipping the "-1\r\n"
+        resp->as.blk_str->length = 0;
+        resp->as.blk_str->chars = NULL;
         return resp;
     }
 
     int strLen = convert_to_int(c);
-    resp->data.blkString.len = strLen;
-    resp->data.blkString.chars = malloc(strLen + 1);
-    memcpy(resp->data.blkString.chars, (*c), strLen);
-    resp->data.blkString.chars[strLen] = '\0';
-    (*c) += strLen + 2;
-    printf("(blk) len is %d and we parsed (blk): %s\n", resp->data.blkString.len, resp->data.blkString.chars);
+    resp->as.blk_str->length = strLen;
+    resp->as.blk_str->chars = malloc(strLen + 1);
+    memcpy(resp->as.blk_str->chars, *c, strLen);
+    resp->as.blk_str->chars[strLen] = '\0';
+    *c += strLen + 2;
     return resp;
 }
 
 static RespData* parse_resp_integer(char** c) {
     RespData* resp = malloc(sizeof(*resp));
+    if (!resp) {
+        fprintf(stderr, "Couldn't allocate memory.");
+        exit(EXIT_FAILURE);
+    }
+
     resp->type = RESP_INTEGER;
-    bool isNegative = (*(*c) == '-');
-    if (*(*c) == '+' || *(*c) == '-') {
+
+    bool isNegative = (**c == '-');
+    if (**c == '+' || **c == '-') {
         (*c)++;
     }
 
-    resp->data.integer = convert_to_int(c);
+    resp->as.integer = convert_to_int(c);
     if (isNegative) {
-        resp->data.integer = (-1)*resp->data.integer;
+        resp->as.integer = (-1)*AS_INTEGER(resp);
     }
 
     return resp;
@@ -87,11 +112,8 @@ static RespData* parse_resp_integer(char** c) {
 
 
 RespData* parse_resp_data(char** input) { 
-    printf("input is: %s\n", *input);
     char type = **input;
-    printf("%c\n", **input);
-    (*input)++;
-    printf("%c\n", **input);
+    *input++;
     switch (type) {
         case '+': 
             printf("simple strings not yet implemented");
@@ -115,44 +137,17 @@ char* convert_data_to_blk(RespData* input) {
     if (input->type != RESP_BULK_STRING) {
         return "";
     }
-    int inputLength = input->data.blkString.len;
+    int inputLength = AS_BLK_STR(input)->length;
     char idk[1000];
     int encodedLength = inputLength + sprintf(idk, "$%d\r\n", inputLength) + 2;
     char* encodedString = (char*) malloc(encodedLength + 1);
 
     sprintf(encodedString, "$%u\r\n", inputLength);
 
-    strcpy(encodedString + strlen(encodedString), input->data.blkString.chars);
+    strcpy(encodedString + strlen(encodedString), AS_BLK_STR(input)->chars);
 
     strcat(encodedString, "\r\n");
 
     return encodedString;
 }
 
-void free_resp(RespData* resp) {
-    if (!resp) {
-        return;
-    }
-
-    switch (resp->type){
-        case RESP_SIMPLE_STRING:
-            free(resp->data.simpleString);
-            break;
-        case RESP_SIMPLE_ERROR:
-            free(resp->data.simpleError);
-            break;
-        case RESP_BULK_STRING:
-            free(resp->data.blkString.chars);
-            break;
-        case RESP_ARRAY:
-            for (int i = 0; i < resp->data.array.len; i++) {
-                free_resp(resp->data.array.data[i]);
-            }
-            free(resp->data.array.data);
-            break;
-        default:
-            break;
-    }
-
-    free(resp);
-}
