@@ -69,6 +69,8 @@ static int create_and_bind(void) {
 		printf("Bind failed: %s \n", strerror(errno));
 		return -1;
 	}
+
+	return server_fd;
 }
 
 
@@ -281,5 +283,3 @@ void *handle_client(void *arg) {
 
 	close(client_socket);
 	pthread_exit(NULL);
-}
-
