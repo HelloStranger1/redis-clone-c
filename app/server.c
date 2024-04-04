@@ -170,7 +170,7 @@ int main() {
 					}
 					event.data.fd = infd;
 					event.events = EPOLLIN | EPOLLET;
-					s = epoll_ctl(efd, EPOLL_CTL_ADD, infd, &event);
+					s = epoll_ctl(efd, EPOLL_CTL_ADD, infd, &events);
 					if (s == -1) {
 						perror("epoll_ctl");
 						return 1;
@@ -199,11 +199,11 @@ int main() {
 						done = 1;
 						break;
 					}
-
 					char pingCmd[] = "PING";
-					char echoCmd[] = "ECHO";
-					char* temp = buffer;
-					RespData* data = parse_resp_data(&temp);
+					char echoCmd[] = "ECHO";	
+					printf("Recieved message: %s\n", buffer);
+					char* tmp = buffer;
+					RespData* data = parse_resp_data(&tmp);
 					if(data->type != RESP_ARRAY) {
 						printf("Expected array. wtf");
 						exit(EXIT_FAILURE);
@@ -214,6 +214,7 @@ int main() {
 						exit(EXIT_FAILURE);
 					}
 
+
 					if(!strcasecmp(AS_BLK_STR(command)->chars, pingCmd)) {
 						char* responsePing = "+PONG\r\n";
 						send(events[i].data.fd, responsePing, strlen(responsePing), 0);
@@ -223,8 +224,6 @@ int main() {
 						char* response = convert_data_to_blk(arg);
 						send(events[i].data.fd, response, strlen(response), 0);
 					}
-
-					// Here we handle input, the socket can be found in events[i].data.fd
 				}
 				if (done) {
 					printf("Closed connection on descriptor %d\n", events[i].data.fd);
@@ -270,7 +269,6 @@ void *handle_client(void *arg) {
 			exit(EXIT_FAILURE);
 		}
 
-		printf("We got: %s", AS_BLK_STR(command)->chars);
 		if(!strcasecmp(AS_BLK_STR(command)->chars, pingCmd)) {
 			char* responsePing = "+PONG\r\n";
 			send(client_socket, responsePing, strlen(responsePing), 0);
@@ -285,3 +283,4 @@ void *handle_client(void *arg) {
 	close(client_socket);
 	pthread_exit(NULL);
 }
+

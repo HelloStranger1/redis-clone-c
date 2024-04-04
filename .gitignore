@@ -3,3 +3,4 @@ main.c
 main.o
 parser.o
 server.o
+Makefile
