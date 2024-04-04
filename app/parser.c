@@ -30,7 +30,7 @@ static int convert_to_int(char** c) {
         value *= 10;
         value += (int)(**c - '0');
 
-        *c++;
+        (*c)++;
     }
     *c += 2; // Skip \r\n
     return value;
@@ -45,6 +45,7 @@ static RespData* parse_resp_arr(char** c) {
     }
 
     resp->type = RESP_ARRAY;
+    resp->as.arr = (DataArr*) malloc(sizeof(DataArr));
 
     int itemCount = convert_to_int(c);
     if (itemCount == -1) {
@@ -71,7 +72,7 @@ static RespData* parse_resp_blk_string(char** c) {
     }
 
     resp->type = RESP_BULK_STRING;
-
+    resp->as.blk_str = (BlkStr*) malloc(sizeof(BlkStr));
     if (isEmptyString(*c)) {
         *c += 4; //Skipping the "-1\r\n"
         resp->as.blk_str->length = 0;
@@ -113,7 +114,7 @@ static RespData* parse_resp_integer(char** c) {
 
 RespData* parse_resp_data(char** input) { 
     char type = **input;
-    *input++;
+    (*input)++;
     switch (type) {
         case '+': 
             printf("simple strings not yet implemented");

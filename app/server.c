@@ -43,8 +43,6 @@ static int make_socket_non_blocking(int sfd) {
 static int create_and_bind(void) {
 	int server_fd;
 
-	struct sockaddr_in client_addr;
-
 	server_fd = socket(AF_INET, SOCK_STREAM, 0);
 
 	if (server_fd == -1) {
@@ -77,14 +75,13 @@ static int create_and_bind(void) {
 
 int main() {
 	char buffer[BUFFER_SIZE] = {0};
-	int server_fd, client_addr_len, new_socket;
+	int server_fd, client_addr_len;
 	int s, efd;
 	struct sockaddr_in client_addr;
 	
 	struct epoll_event event;
 	struct epoll_event *events;
 
-	pthread_t tid;
 	// Disable output buffering
 	setbuf(stdout, NULL);
 	
