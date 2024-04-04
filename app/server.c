@@ -27,7 +27,7 @@ static int make_socket_non_blocking(int sfd) {
 
 	flags = fcntl(sfd, F_GETFL, 0);
 	if (flags == -1) {
-		perror("fcntl");
+		perror("fcntl"); 
 		return -1;
 	}
 
