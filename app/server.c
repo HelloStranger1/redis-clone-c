@@ -254,6 +254,8 @@ char* run_command(BlkStr *command, DataArr* args) {
 		RespData *value = args->values[2];
 
 		hash_table_insert(ht, strdup(AS_BLK_STR(key)->chars), copy_data(value));
+		char* ok = "+OK\r\n";
+		return strdup(ok);
 	}
 
 	if (!strcasecmp(command->chars, getCmd)) {
