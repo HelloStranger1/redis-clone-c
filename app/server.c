@@ -92,7 +92,7 @@ int main() {
 	struct epoll_event event;
 	struct epoll_event *events;
 
-	ht = hash_table_create(HASH_TABLE_SIZE, hash_string, freeData);
+	ht = hash_table_create(HASH_TABLE_SIZE, hash_string, free_data);
 
 	// Disable output buffering
 	setbuf(stdout, NULL);
@@ -254,14 +254,14 @@ const char* run_command(BlkStr *command, DataArr* args) {
 	}
 
 	if (!strcasecmp(command->chars, setCmd)) {
-		BlkStr *key = args->values[1];
+		BlkStr *key = AS_BLK_STR(args->values[1]);
 		BlkStr *value = args->values[2];
 
-		hash_table_insert(ht, strdup(key->chars), copy_data(value));
+		hash_table_insert(ht, strdup(key->chars), (void*) copy_data(value));
 	}
 
 	if (!strcasecmp(command->chars, getCmd)) {
-		BlkStr* key = args->values[1];
+		BlkStr* key = AS_BLK_STR(args->values[1]);
 		void *value = hash_table_get(ht, key->chars);
 		if (value == NULL) {
 			return "_\r\n";
