@@ -29,8 +29,7 @@ static char setCmd[] = "SET";
 static char getCmd[] = "GET";
 
 hash_table *ht;
-
-const char* run_command(BlkStr *command, DataArr* args);
+char* run_command(BlkStr *command, DataArr* args);
 
 static int make_socket_non_blocking(int sfd) {
 	int flags, s;
@@ -84,11 +83,8 @@ static int create_and_bind(void) {
 
 
 int main() {
-	char buffer[BUFFER_SIZE] = {0};
-	int server_fd, client_addr_len;
-	int s, efd;
-	struct sockaddr_in client_addr;
-	
+	int server_fd;
+	int s, efd;	
 	struct epoll_event event;
 	struct epoll_event *events;
 
@@ -115,7 +111,6 @@ int main() {
 		return 1;
 	}
 	printf("Waiting for a client to connect...\n");
-	client_addr_len = sizeof(client_addr);
 
 	efd = epoll_create1(0);
 	if (efd == -1) {
@@ -223,8 +218,9 @@ int main() {
 
 					printf("We parsed %s", AS_BLK_STR(command)->chars);
 
-					const char* response = run_command(AS_BLK_STR(command), AS_ARR(data));
+					char* response = run_command(AS_BLK_STR(command), AS_ARR(data));
 					send(events[i].data.fd, response, strlen(response), 0);
+					free(response);
 				}
 				if (done) {
 					printf("Closed connection on descriptor %d\n", events[i].data.fd);
@@ -243,9 +239,9 @@ int main() {
 
 
 
-const char* run_command(BlkStr *command, DataArr* args) {
+char* run_command(BlkStr *command, DataArr* args) {
 	if(!strcasecmp(command->chars, pingCmd)) {
-		return "+PONG\r\n";
+		return strdup("+PONG\r\n");
 	}
 
 	if (!strcasecmp(command->chars, echoCmd)) {
@@ -254,10 +250,10 @@ const char* run_command(BlkStr *command, DataArr* args) {
 	}
 
 	if (!strcasecmp(command->chars, setCmd)) {
-		BlkStr *key = AS_BLK_STR(args->values[1]);
-		BlkStr *value = args->values[2];
+		RespData *key = args->values[1];
+		RespData *value = args->values[2];
 
-		hash_table_insert(ht, strdup(key->chars), (void*) copy_data(value));
+		hash_table_insert(ht, strdup(AS_BLK_STR(key)->chars), copy_data(value));
 	}
 
 	if (!strcasecmp(command->chars, getCmd)) {
@@ -267,8 +263,11 @@ const char* run_command(BlkStr *command, DataArr* args) {
 			return "_\r\n";
 		}
 
-		return convert_data_to_blk(AS_BLK_STR( (RespData*)value));
+		return convert_data_to_blk((RespData*)value);
 	}
+	char err[256];
+	sprintf(err, "-ERR unkown command '%s'", command->chars);
+	return strdup(err);
 
 }
 

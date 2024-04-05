@@ -2,6 +2,7 @@
 #define redis_table_h
 
 #include <stdlib.h>
+#include <stdio.h>
 #include "common.h"
 
 typedef uint32_t hashfunction (const char*, size_t);
