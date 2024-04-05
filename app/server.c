@@ -15,12 +15,22 @@
 
 #include "parser.h"
 #include "data.h"
+#include "table.h"
 #include "common.h"
 
 #define BUFFER_SIZE 1024
 #define MAX_EVENTS 64
+#define HASH_TABLE_SIZE (uint32_t) 512
 
-void *handle_client(void *arg);
+
+static char pingCmd[] = "PING";
+static char echoCmd[] = "ECHO";
+static char setCmd[] = "SET";
+static char getCmd[] = "GET";
+
+hash_table *ht;
+
+const char* run_command(BlkStr *command, DataArr* args);
 
 static int make_socket_non_blocking(int sfd) {
 	int flags, s;
@@ -81,6 +91,8 @@ int main() {
 	
 	struct epoll_event event;
 	struct epoll_event *events;
+
+	ht = hash_table_create(HASH_TABLE_SIZE, hash_string, freeData);
 
 	// Disable output buffering
 	setbuf(stdout, NULL);
@@ -196,8 +208,6 @@ int main() {
 						done = 1;
 						break;
 					}
-					char pingCmd[] = "PING";
-					char echoCmd[] = "ECHO";	
 					printf("Recieved message: %s\n", buffer);
 					char* tmp = buffer;
 					RespData* data = parse_resp_data(&tmp);
@@ -213,15 +223,8 @@ int main() {
 
 					printf("We parsed %s", AS_BLK_STR(command)->chars);
 
-					if(!strcasecmp(AS_BLK_STR(command)->chars, pingCmd)) {
-						char* responsePing = "+PONG\r\n";
-						send(events[i].data.fd, responsePing, strlen(responsePing), 0);
-					} else if (!strcasecmp(AS_BLK_STR(command)->chars, echoCmd)) {
-						RespData* arg = AS_ARR(data)->values[1];
-						printf("We parsed that we should echo: %s", AS_BLK_STR(arg)->chars);
-						char* response = convert_data_to_blk(arg);
-						send(events[i].data.fd, response, strlen(response), 0);
-					}
+					const char* response = run_command(command, data);
+					send(events[i].data.fd, response, strlen(response), 0);
 				}
 				if (done) {
 					printf("Closed connection on descriptor %d\n", events[i].data.fd);
@@ -232,7 +235,7 @@ int main() {
 		}
 	}
 	free(events);
-
+	hash_table_free(ht);
 	close(server_fd);
 
 	return 0;
@@ -240,45 +243,32 @@ int main() {
 
 
 
-void *handle_client(void *arg) {
-	int client_socket = *((int *)arg);
-	char buffer[BUFFER_SIZE] = {0};
-
-	char pingCmd[] = "PING";
-	char echoCmd[] = "ECHO";
-
-	for (;;) {
-		memset(buffer, 0, BUFFER_SIZE);
-		if ((read(client_socket, buffer, BUFFER_SIZE)) == 0) {
-			printf("Client disconnected\n");
-			break;
-		}
-		
-		printf("Recieved message: %s\n", buffer);
-		char* tmp = buffer;
-		RespData* data = parse_resp_data(&tmp);
-		if(data->type != RESP_ARRAY) {
-			printf("Expected array. wtf");
-			exit(EXIT_FAILURE);
-		}
-		RespData* command = AS_ARR(data)->values[0];
-		if (command->type != RESP_BULK_STRING) {
-			printf("command should be a bulk string");
-			exit(EXIT_FAILURE);
-		}
-
-		if(!strcasecmp(AS_BLK_STR(command)->chars, pingCmd)) {
-			char* responsePing = "+PONG\r\n";
-			send(client_socket, responsePing, strlen(responsePing), 0);
-		} else if (!strcasecmp(AS_BLK_STR(command)->chars, echoCmd)) {
-			RespData* arg = AS_ARR(data)->values[1];
-			printf("We parsed that we should echo: %s", AS_BLK_STR(arg)->chars);
-			char* response = convert_data_to_blk(arg);
-			send(client_socket, response, strlen(response), 0);
-		}
+const char* run_command(BlkStr *command, DataArr* args) {
+	if(!strcasecmp(command->chars, pingCmd)) {
+		return "+PONG\r\n";
 	}
 
-	close(client_socket);
-	pthread_exit(NULL);
+	if (!strcasecmp(command->chars, echoCmd)) {
+		RespData *arg = args->values[1];
+		return convert_data_to_blk(arg);
+	}
+
+	if (!strcasecmp(command->chars, setCmd)) {
+		BlkStr *key = args->values[1];
+		BlkStr *value = args->values[2];
+
+		hash_table_insert(ht, strdup(key->chars), copy_data(value));
+	}
+
+	if (!strcasecmp(command->chars, getCmd)) {
+		BlkStr* key = args->values[1];
+		void *value = hash_table_get(ht, key->chars);
+		if (value == NULL) {
+			return "_\r\n";
+		}
+
+		return convert_data_to_blk(AS_BLK_STR( (RespData*)value));
+	}
+
 }
 

@@ -3,6 +3,7 @@
 
 #include <stdlib.h>
 #include <stdbool.h>
+#include "common.h"
 
 typedef enum {
     RESP_SIMPLE_STRING,
@@ -57,6 +58,7 @@ typedef struct RespData {
 #define AS_BLK_STR(resp_data) ((resp_data)->as.blk_str)
 #define AS_ARR(resp_data) ((resp_data)->as.arr)
 
+/*
 #define SIMPLE_STRING_DATA(value) ((RespData){RESP_SIMPLE_ERROR, {.simple_str = value}})
 #define SIMPLE_ERR_DATA(value) ((RespData){RESP_SIMPLE_ERROR, {.simple_str = value}})
 #define INTEGER_DATA(value) ((RespData){RESP_INTEGER, {.integer = value}})
@@ -64,9 +66,12 @@ typedef struct RespData {
 #define BLK_STRING_DATA(value) ((RespData){RESP_BULK_STRING, {.blk_str = (BlkStr*)value}})
 #define ARR_DATA(value) ((RespData){RESP_ARRAY, {.arr = (DataArr*)value}})
 #define NULL_DATA ((RespData){RESP_NULL, {.integer = 0}})
+*/
 
 
 void freeData(RespData* data);
 void printData(RespData* data);
+RespData* copy_data(RespData* data);
+uint32_t hash_string(const char* key, size_t length);
 
 #endif
