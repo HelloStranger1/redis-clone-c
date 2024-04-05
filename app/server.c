@@ -223,7 +223,7 @@ int main() {
 
 					printf("We parsed %s", AS_BLK_STR(command)->chars);
 
-					const char* response = run_command(command, data);
+					const char* response = run_command(AS_BLK_STR(command), AS_ARR(data));
 					send(events[i].data.fd, response, strlen(response), 0);
 				}
 				if (done) {

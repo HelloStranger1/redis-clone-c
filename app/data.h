@@ -68,7 +68,7 @@ typedef struct RespData {
 #define NULL_DATA ((RespData){RESP_NULL, {.integer = 0}})
 */
 
-
+void free_data(void *data);
 void freeData(RespData* data);
 void printData(RespData* data);
 RespData* copy_data(RespData* data);

@@ -2,6 +2,9 @@
 #include "stdio.h"
 #include <string.h>
 
+void free_data(void *data) {
+    freeData( (RespData*)data);
+}
 
 uint32_t hash_string(const char* key, size_t length) {
     uint32_t hash = 2166136261u;
