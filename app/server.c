@@ -242,7 +242,7 @@ char* run_set(RespData *key, RespData *value, DataArr *args) {
 	/**
 	 * Args go in this order: [NX | XX] [GET] [PX | EXAT | KEEPTTL ...]
 	*/
-	if (args->length == 2) {
+	if (args->length == 3) {
 		hash_table_insert(ht, strdup(AS_BLK_STR(key)->chars), copy_data(value), -1);
 		char* ok = "+OK\r\n";
 		return strdup(ok);
