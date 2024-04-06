@@ -66,18 +66,25 @@ static int create_and_bind (char *port)
 		return -1;
 	}
 
-	sfd = socket (rp->ai_family, rp->ai_socktype, rp->ai_protocol);
-	if (sfd == -1) {
-		printf("Socket creation failed: %s...\n", strerror(errno));
-		return -1;
-	}
+	for (rp = result; rp != NULL; rp = rp->ai_next) {
+		sfd = socket (rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+		if (sfd == -1)
+			continue;
 
-	s = bind (sfd, rp->ai_addr, rp->ai_addrlen);
-	if (s != 0) {
-		/* We weren't able to bind successfully! */
+		int reuse = 1;
+		if (setsockopt(sfd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
+			printf("SO_REUSEADDR failed: %s \n", strerror(errno));
+			return -1;
+		}
+
+		s = bind (sfd, rp->ai_addr, rp->ai_addrlen);
+		if (s == 0) {
+			/* We managed to bind successfully! */
+			break;
+		}
+
 		close (sfd);
 	}
-
 
 	if (rp == NULL) {
 		fprintf (stderr, "Could not bind\n");
