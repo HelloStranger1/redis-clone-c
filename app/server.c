@@ -29,8 +29,10 @@ static char echoCmd[] = "ECHO";
 static char setCmd[] = "SET";
 static char getCmd[] = "GET";
 
+bool isReplica = false;
+
 hash_table *ht;
-char* run_command(BlkStr *command, DataArr* args);
+void run_command(int client_fd, BlkStr *command, DataArr* args);
 
 static int make_socket_non_blocking(int sfd) {
 	int flags, s;
@@ -237,9 +239,7 @@ int main(int argc, char *argv[]) {
 
 					printf("We parsed %s", AS_BLK_STR(command)->chars);
 
-					char* response = run_command(AS_BLK_STR(command), AS_ARR(data));
-					send(events[i].data.fd, response, strlen(response), 0);
-					free(response);
+					run_command(events[i].data.fd, AS_BLK_STR(command), AS_ARR(data));
 				}
 				if (done) {
 					printf("Closed connection on descriptor %d\n", events[i].data.fd);
@@ -256,7 +256,7 @@ int main(int argc, char *argv[]) {
 	return 0;
 }
 
-char* run_set(RespData *key, RespData *value, DataArr *args) {
+void run_set(int socket_fd, RespData *key, RespData *value, DataArr *args) {
 	int i = 3; // Start of arguments
 	/**
 	 * Args go in this order: [NX | XX] [GET] [PX | EXAT | KEEPTTL ...]
@@ -264,7 +264,8 @@ char* run_set(RespData *key, RespData *value, DataArr *args) {
 	if (args->length == 3) {
 		hash_table_insert(ht, strdup(AS_BLK_STR(key)->chars), copy_data(value), -1);
 		char* ok = "+OK\r\n";
-		return strdup(ok);
+		send(socket_fd, ok, strlen(ok), 0);
+		return;
 	}
 	// We have args. We check one by one. 
 	if (!strcasecmp(AS_BLK_STR(args->values[i])->chars, "NX")) {
@@ -284,41 +285,76 @@ char* run_set(RespData *key, RespData *value, DataArr *args) {
 		long long expiryMilli = atoi(AS_BLK_STR(args->values[++i])->chars);
 		hash_table_insert(ht, strdup(AS_BLK_STR(key)->chars), copy_data(value), current_timestamp() + expiryMilli);
 	}
-
 	char* ok = "+OK\r\n";
-	return strdup(ok);
+	send(socket_fd, ok, strlen(ok), 0);
+	
 }
 
-char* run_command(BlkStr *command, DataArr* args) {
+void run_info(int client_fd, DataArr *args) {
+	int i = 1; // Start of args
+	char rawResponse[512];
+	while (i < args->length) {
+		if (!strcasecmp(AS_BLK_STR(args->values[i])->chars, "Replication")) {
+			strcat(rawResponse, "# Replication\n");
+			if (isReplica) {
+				strcat(rawResponse, "role:slave\n");
+			} else {
+				strcat(rawResponse, "role:master\n");
+			}
+			// Here we add more values in replication
+		}
+		// Here we add support for more section
+	}
+	
+	char encodedLen[10];
+	int lenlen = sprintf(encodedLen, "%ld", strlen(rawResponse));
+
+	send(client_fd, "$", 1, 0);
+	send(client_fd, encodedLen, lenlen, 0);
+	send(client_fd, rawResponse, strlen(rawResponse), 0);
+	send(client_fd, "\r\n", 2, 0);
+}
+
+void run_command(int client_fd, BlkStr *command, DataArr* args) {
 	if(!strcasecmp(command->chars, pingCmd)) {
-		return strdup("+PONG\r\n");
+		send(client_fd, "+PONG\r\n", strlen("+PONG\r\n"), 0);
+		return;
 	}
 
 	if (!strcasecmp(command->chars, echoCmd)) {
 		RespData *arg = args->values[1];
-		return convert_data_to_blk(arg);
+		char* response = convert_data_to_blk(arg);
+		send(client_fd, response, strlen(response), 0);
+		free(response);
+		return;
 	}
 
 	if (!strcasecmp(command->chars, setCmd)) {
 		RespData *key = args->values[1];
 		RespData *value = args->values[2];
 
-		return run_set(key, value, args);
+		run_set(client_fd, key, value, args);
+		return;
 	}
 
 	if (!strcasecmp(command->chars, getCmd)) {
 		BlkStr* key = AS_BLK_STR(args->values[1]);
 		void *value = hash_table_get(ht, key->chars);
 		if (value == NULL) {
-			return "$-1\r\n";
+			send(client_fd, "$-1\r\n", strlen("$-1\r\n"), 0);
+			return;
 		}
-
-
-		return convert_data_to_blk((RespData*)value);
+		char* response = convert_data_to_blk((RespData*)value);
+		send(client_fd, response, strlen(response), 0);
+		free(response);
+		return;
 	}
-	char err[256];
-	sprintf(err, "-ERR unkown command '%s'", command->chars);
-	return strdup(err);
+
+	if (!strcasecmp(command->chars, "INFO")) {
+		run_info(client_fd, args);
+	}
+	fprintf(stderr, "-ERR unkown command '%s'", command->chars);
+	
 
 }
 
