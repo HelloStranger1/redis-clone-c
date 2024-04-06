@@ -295,11 +295,11 @@ void run_info(int client_fd, DataArr *args) {
 	char rawResponse[512];
 	while (i < args->length) {
 		if (!strcasecmp(AS_BLK_STR(args->values[i])->chars, "Replication")) {
-			strcat(rawResponse, "# Replication\n");
+			strcat(rawResponse, "# Replication");
 			if (isReplica) {
-				strcat(rawResponse, "role:slave\n");
+				strcat(rawResponse, "role:slave");
 			} else {
-				strcat(rawResponse, "role:master\n");
+				strcat(rawResponse, "role:master");
 			}
 			// Here we add more values in replication
 			i++;
@@ -353,6 +353,7 @@ void run_command(int client_fd, BlkStr *command, DataArr* args) {
 
 	if (!strcasecmp(command->chars, "INFO")) {
 		run_info(client_fd, args);
+		return;
 	}
 	fprintf(stderr, "-ERR unkown command '%s'", command->chars);
 	
