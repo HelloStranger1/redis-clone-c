@@ -262,7 +262,8 @@ char* run_set(RespData *key, RespData *value, DataArr *args) {
 	}
 
 	if (!strcasecmp(AS_BLK_STR(args->values[i])->chars, "PX")) {
-		hash_table_insert(ht, strdup(AS_BLK_STR(key)->chars), copy_data(value), current_timestamp() + AS_INTEGER(args->values[++i]));
+		long long expiryMilli = atoi(AS_BLK_STR(args->values[++i])->chars);
+		hash_table_insert(ht, strdup(AS_BLK_STR(key)->chars), copy_data(value), current_timestamp() + expiryMilli);
 	}
 
 	char* ok = "+OK\r\n";
