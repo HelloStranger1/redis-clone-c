@@ -302,6 +302,7 @@ void run_info(int client_fd, DataArr *args) {
 				strcat(rawResponse, "role:master\n");
 			}
 			// Here we add more values in replication
+			i++;
 		}
 		// Here we add support for more section
 	}
