@@ -293,6 +293,7 @@ void run_set(int socket_fd, RespData *key, RespData *value, DataArr *args) {
 void run_info(int client_fd, DataArr *args) {
 	int i = 1; // Start of args
 	char rawResponse[512];
+	rawResponse[511] = '\0';
 	while (i < args->length) {
 		if (!strcasecmp(AS_BLK_STR(args->values[i])->chars, "Replication")) {
 			strcat(rawResponse, "# Replication");
