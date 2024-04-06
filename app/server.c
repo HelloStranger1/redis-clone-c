@@ -237,7 +237,37 @@ int main() {
 	return 0;
 }
 
+char* run_set(RespData *key, RespData *value, DataArr *args) {
+	int i = 3; // Start of arguments
+	/**
+	 * Args go in this order: [NX | XX] [GET] [PX | EXAT | KEEPTTL ...]
+	*/
+	if (args->length == 2) {
+		hash_table_insert(ht, strdup(AS_BLK_STR(key)->chars), copy_data(value), -1);
+		char* ok = "+OK\r\n";
+		return strdup(ok);
+	}
+	// We have args. We check one by one. 
+	if (!strcasecmp(AS_BLK_STR(args->values[i])->chars, "NX")) {
+		fprintf(stderr, "We haven't implemented command 'NX'");
+		exit(1);	
+	} else if (!strcasecmp(AS_BLK_STR(args->values[i])->chars, "XX")) {
+		fprintf(stderr, "We haven't implemented command 'XX'");
+		exit(1);
+	}
 
+	if (!strcasecmp(AS_BLK_STR(args->values[i])->chars, "GET")) {
+		fprintf(stderr, "We haven't implemented command 'GET'");
+		exit(1);
+	}
+
+	if (!strcasecmp(AS_BLK_STR(args->values[i])->chars, "PX")) {
+		hash_table_insert(ht, strdup(AS_BLK_STR(key)->chars), copy_data(value), current_timestamp() + AS_INTEGER(args->values[++i]));
+	}
+
+	char* ok = "+OK\r\n";
+	return strdup(ok);
+}
 
 char* run_command(BlkStr *command, DataArr* args) {
 	if(!strcasecmp(command->chars, pingCmd)) {
@@ -253,17 +283,16 @@ char* run_command(BlkStr *command, DataArr* args) {
 		RespData *key = args->values[1];
 		RespData *value = args->values[2];
 
-		hash_table_insert(ht, strdup(AS_BLK_STR(key)->chars), copy_data(value));
-		char* ok = "+OK\r\n";
-		return strdup(ok);
+		return run_set(key, value, args);
 	}
 
 	if (!strcasecmp(command->chars, getCmd)) {
 		BlkStr* key = AS_BLK_STR(args->values[1]);
 		void *value = hash_table_get(ht, key->chars);
 		if (value == NULL) {
-			return "_\r\n";
+			return "$-1\r\n";
 		}
+
 
 		return convert_data_to_blk((RespData*)value);
 	}

@@ -139,6 +139,9 @@ char* convert_data_to_blk(RespData* input) {
         return "";
     }
     int inputLength = AS_BLK_STR(input)->length;
+    if (AS_BLK_STR(input)->chars == NULL) {
+        return strdup("$-1\r\n");
+    }
     char idk[1000];
     int encodedLength = inputLength + sprintf(idk, "$%d\r\n", inputLength) + 2;
     char* encodedString = (char*) malloc(encodedLength + 1);
