@@ -4,3 +4,9 @@ main.o
 parser.o
 server.o
 Makefile
+client.cpp
+client.o
+client
+table.o
+data.o
+common.o

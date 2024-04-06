@@ -20,6 +20,7 @@
 
 #define BUFFER_SIZE 1024
 #define MAX_EVENTS 64
+#define DEFAULT_PORT 6379
 #define HASH_TABLE_SIZE (uint32_t) 512
 
 
@@ -49,40 +50,49 @@ static int make_socket_non_blocking(int sfd) {
 
 	return 0;
 }
-static int create_and_bind(void) {
-	int server_fd;
+static int create_and_bind (char *port)
+{
+	struct addrinfo hints;
+	struct addrinfo *result, *rp;
+	int s, sfd;
 
-	server_fd = socket(AF_INET, SOCK_STREAM, 0);
-
-	if (server_fd == -1) {
-		printf("Socket creation failed: %s...\n", strerror(errno));
+	memset (&hints, 0, sizeof (struct addrinfo));
+	hints.ai_family = AF_UNSPEC;     /* Return IPv4 and IPv6 choices */
+	hints.ai_socktype = SOCK_STREAM; /* We want a TCP socket */
+	hints.ai_flags = AI_PASSIVE;     /* All interfaces */
+	s = getaddrinfo (NULL, port, &hints, &result);
+	if (s != 0) {
+		fprintf (stderr, "getaddrinfo: %s\n", gai_strerror (s));
 		return -1;
 	}
 
-	// // Since the tester restarts your program quite often, setting SO_REUSEADDR
-	// // ensures that we don't run into 'Address already in use' errors
-	int reuse = 1;
-	if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse)) < 0) {
-		printf("SO_REUSEADDR failed: %s \n", strerror(errno));
+	for (rp = result; rp != NULL; rp = rp->ai_next) {
+		sfd = socket (rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+		if (sfd == -1)
+			continue;
+
+		s = bind (sfd, rp->ai_addr, rp->ai_addrlen);
+		if (s == 0) {
+			/* We managed to bind successfully! */
+			break;
+		}
+
+		close (sfd);
+	}
+
+	if (rp == NULL) {
+		fprintf (stderr, "Could not bind\n");
 		return -1;
 	}
 
-	struct sockaddr_in serv_addr = { .sin_family = AF_INET ,
-									 .sin_port = htons(6379),
-									 .sin_addr = { htonl(INADDR_ANY) },
-									};
+	freeaddrinfo (result);
 
-	if (bind(server_fd, (struct sockaddr *) &serv_addr, sizeof(serv_addr)) != 0) {
-		printf("Bind failed: %s \n", strerror(errno));
-		return -1;
-	}
-
-	return server_fd;
+	return sfd;
 }
 
 
 
-int main() {
+int main(int argc, char *argv[]) {
 	int server_fd;
 	int s, efd;	
 	struct epoll_event event;
@@ -92,8 +102,11 @@ int main() {
 
 	// Disable output buffering
 	setbuf(stdout, NULL);
-	
-	server_fd = create_and_bind();
+	if (argc == 3) {
+		server_fd = create_and_bind(argv[2]);
+	} else {
+		server_fd = create_and_bind("6379");
+	}
 
 	if (server_fd == -1) {
 		printf("Socket creation failed: %s...\n", strerror(errno));
