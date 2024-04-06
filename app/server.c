@@ -309,9 +309,10 @@ void run_info(int client_fd, DataArr *args) {
 	
 	char encodedLen[10];
 	int lenlen = sprintf(encodedLen, "%ld", strlen(rawResponse));
-
+	printf("%s", encodedLen);
 	send(client_fd, "$", 1, 0);
 	send(client_fd, encodedLen, lenlen, 0);
+	send(client_fd, "\r\n", 2, 0);
 	send(client_fd, rawResponse, strlen(rawResponse), 0);
 	send(client_fd, "\r\n", 2, 0);
 }
