@@ -71,10 +71,13 @@ void freeData(RespData* data) {
             for (int i = 0; i < AS_ARR(data)->length; i++) {
                 freeData(AS_ARR(data)->values[i]);
             }
+            free(AS_ARR(data)->values);
+            free(AS_ARR(data));
             free(data);
             break;
         case RESP_BULK_STRING:
             free(AS_BLK_STR(data)->chars);
+            free(AS_BLK_STR(data));
             free(data);
             break;
         case RESP_SIMPLE_STRING:

@@ -211,7 +211,7 @@ int main(int argc, char *argv[]) {
 
 				for (;;) {
 					ssize_t count;
-					char buffer[BUFFER_SIZE];
+					char buffer[BUFFER_SIZE] = {0};
 
 					count = read(events[i].data.fd, buffer, sizeof(buffer));
 					if (count == -1) {
@@ -225,6 +225,11 @@ int main(int argc, char *argv[]) {
 						break;
 					}
 					printf("Recieved message: %s\n", buffer);
+					if (!strcmp(buffer, "*1\r\n$4\r\nquit\r\n")) {
+						printf("Closed connection on descriptor %d\n", events[i].data.fd);
+						close(events[i].data.fd);
+						goto cleanup;
+					}
 					char* tmp = buffer;
 					RespData* data = parse_resp_data(&tmp);
 					if(data->type != RESP_ARRAY) {
@@ -237,9 +242,10 @@ int main(int argc, char *argv[]) {
 						exit(EXIT_FAILURE);
 					}
 
-					printf("We parsed %s", AS_BLK_STR(command)->chars);
+					printf("We parsed %s\n", AS_BLK_STR(command)->chars);
 
 					run_command(events[i].data.fd, AS_BLK_STR(command), AS_ARR(data));
+					freeData(data);
 				}
 				if (done) {
 					printf("Closed connection on descriptor %d\n", events[i].data.fd);
@@ -249,6 +255,7 @@ int main(int argc, char *argv[]) {
 				
 		}
 	}
+cleanup:
 	free(events);
 	hash_table_free(ht);
 	close(server_fd);
@@ -262,7 +269,15 @@ void run_set(int socket_fd, RespData *key, RespData *value, DataArr *args) {
 	 * Args go in this order: [NX | XX] [GET] [PX | EXAT | KEEPTTL ...]
 	*/
 	if (args->length == 3) {
-		hash_table_insert(ht, strdup(AS_BLK_STR(key)->chars), copy_data(value), -1);
+		void *inserted = hash_table_insert(ht, AS_BLK_STR(key)->chars, copy_data(value), -1);
+		if (inserted == NULL) {
+			// We inserted a new value
+			printf("New value inserted with key %s\n", AS_BLK_STR(key)->chars);
+		} else {
+			// We over wrote one. We could add functionality for the GET arg here
+			printf("Overwrote data: %s\n", AS_BLK_STR((RespData*)inserted)->chars);
+			free_data(inserted);
+		}
 		char* ok = "+OK\r\n";
 		send(socket_fd, ok, strlen(ok), 0);
 		return;
@@ -283,7 +298,7 @@ void run_set(int socket_fd, RespData *key, RespData *value, DataArr *args) {
 
 	if (!strcasecmp(AS_BLK_STR(args->values[i])->chars, "PX")) {
 		long long expiryMilli = atoi(AS_BLK_STR(args->values[++i])->chars);
-		hash_table_insert(ht, strdup(AS_BLK_STR(key)->chars), copy_data(value), current_timestamp() + expiryMilli);
+		hash_table_insert(ht, AS_BLK_STR(key)->chars, copy_data(value), current_timestamp() + expiryMilli);
 	}
 	char* ok = "+OK\r\n";
 	send(socket_fd, ok, strlen(ok), 0);
@@ -310,7 +325,6 @@ void run_info(int client_fd, DataArr *args) {
 	
 	char encodedLen[10];
 	int lenlen = sprintf(encodedLen, "%ld", strlen(rawResponse));
-	printf("%s", encodedLen);
 	send(client_fd, "$", 1, 0);
 	send(client_fd, encodedLen, lenlen, 0);
 	send(client_fd, "\r\n", 2, 0);
@@ -333,6 +347,10 @@ void run_command(int client_fd, BlkStr *command, DataArr* args) {
 	}
 
 	if (!strcasecmp(command->chars, setCmd)) {
+		if (args->length < 3) {
+			fprintf(stderr, "Not enough args for SET command. ");
+			return;
+		}
 		RespData *key = args->values[1];
 		RespData *value = args->values[2];
 
