@@ -36,6 +36,21 @@ char replication_id[REPLICATION_ID_LEN + 1];
 int offset = 0;
 
 hash_table *ht;
+
+typedef struct {
+	int count;
+	int capacity;
+	int *fd_arr;
+} ReplicaArr;
+
+void replica_arr_write(ReplicaArr arr, int replica_fd) {
+	if (arr.count + 1 >= arr.capacity) {
+		int new_capacity = (arr.capacity > 8) ? (arr.capacity * 2) : 8;
+		arr.fd_arr = realloc(arr.fd_arr, new_capacity * sizeof(*arr.fd_arr));
+	}
+	arr.fd_arr[arr.count] = replica_fd;
+}
+
 void run_command(int client_fd, BlkStr *command, DataArr* args);
 
 void rand_str(char *dest, size_t length) {
@@ -163,7 +178,7 @@ int main(int argc, char *argv[]) {
 	char *port = "6379";
 	char *master_host = NULL;
 	int master_port = -1;
-
+	ReplicaArr* replicas = NULL;
 	rand_str(replication_id, REPLICATION_ID_LEN + 1);
 
 	ht = hash_table_create(HASH_TABLE_SIZE, hash_string, free_data);
@@ -180,6 +195,7 @@ int main(int argc, char *argv[]) {
 				fprintf(stderr, "Expected use of --replicaof: <MASTER_HOST> <MASTER_PORT> \n");
 				return -1;
 			}
+			isReplica = true;
 			master_host = argv[++i];
 			master_port = atoi(argv[++i]);
 		}
@@ -187,8 +203,7 @@ int main(int argc, char *argv[]) {
 
 	server_fd = create_and_bind(port);
 
-	if (master_host != NULL && master_port != -1) {
-		isReplica = true;
+	if (isReplica) {
 		master_fd = connect_to_master(master_host, master_port);
 		if (master_fd == -1) {
 			fprintf(stderr, "Couldn't connect to master.");
@@ -196,6 +211,28 @@ int main(int argc, char *argv[]) {
 		}
 		char *ping = "*1\r\n$4\r\nping\r\n";
 		send(master_fd, ping, strlen(ping), 0);
+
+		RespData replconf = {.type = RESP_ARRAY};
+		BlkStr arg1Blk = {.length = 8, .chars = "REPLCONF"};
+		BlkStr arg2Blk = {.length = 14, .chars = "listening-port"};
+		BlkStr arg3Blk = {.length = strlen(port), .chars = port};
+		RespData arg1 = {.type = RESP_BULK_STRING, .as.blk_str = &arg1Blk};
+		RespData arg2 = {.type = RESP_BULK_STRING, .as.blk_str = &arg2Blk};
+		RespData arg3 = {.type = RESP_BULK_STRING, .as.blk_str = &arg3Blk};
+		replconf.as.arr->length = 3;
+		RespData* args[] = {&arg1, &arg2, &arg3};
+		replconf.as.arr->values = args;
+		
+		char* msg = convert_data_to_blk(&replconf);
+		send(master_fd, msg, strlen(msg), 0);
+		char *msg2 = "*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n";
+		send(master_fd, msg2, strlen(msg2), 0);
+
+	} else {
+		replicas = malloc(sizeof(*replicas));
+		replicas->capacity = 0;
+		replicas->count = 0;
+		replicas->fd_arr = NULL;
 	}
 
 	if (server_fd == -1) {
@@ -289,6 +326,7 @@ int main(int argc, char *argv[]) {
 				/**
 				 * We got a msg from master
 				*/
+
 			} else {
 				/* We have data on the fd waiting to be read.
 				 We must consume it all because we are running in edge triggered mode.

@@ -7,6 +7,8 @@
 
 #define ALLOCATE_ARR(type, count) (type*) malloc(sizeof(type) * count)
 
+static void resp_to_blk(RespData* input, char** result_string, int *dest_capacity);
+
 static bool isDigit(char c) {
     return c >= '0' && c <= '9';
 }
@@ -134,24 +136,90 @@ RespData* parse_resp_data(char** input) {
     }
 }
 
-char* convert_data_to_blk(RespData* input) {
+/**
+ * Returns the new capacity of dest
+*/
+static void append_string(char** dest, const char* src, int *dest_capacity) {
+    int src_len = strlen(src);
+    int dest_len;
+    if (*dest == NULL) {
+        int new_len = src_len + 1;
+        *dest = malloc(sizeof(char) * (new_len));
+        strcpy(*dest, src);
+        return; 
+    } 
+    dest_len = strlen(*dest);
+    if (*dest_capacity > dest_len + src_len) {
+        strcat(*dest, src);
+        return;
+    }
+    int new_capacity = (2 * (*dest_capacity) > (src_len + dest_len)) ? 2* (*dest_capacity) : (dest_len + src_len + 1);
+    *dest_capacity = new_capacity;
+    *dest = realloc(*dest, new_capacity * sizeof(char));
+    strcat(*dest, src);
+}
+
+char *convert_data_to_blk(RespData* input) {
+    // We use a defulat capacity of 64 since its enough most of the time
+    int capacity = 64;
+    char *result = malloc(capacity * sizeof(char));
+    resp_to_blk(input, &result, &capacity);
+    return result;
+}
+
+char* convert_blk_data_to_str(RespData* input) {
     if (input->type != RESP_BULK_STRING) {
         return "";
     }
     int inputLength = AS_BLK_STR(input)->length;
     if (AS_BLK_STR(input)->chars == NULL) {
-        return strdup("$-1\r\n");
+        return "$-1\r\n";
     }
-    char idk[10];
-    int encodedLength = inputLength + sprintf(idk, "$%d\r\n", inputLength) + 2;
-    char* encodedString = (char*) malloc(encodedLength + 1);
 
-    sprintf(encodedString, "$%u\r\n", inputLength);
+    char response[512];
+    char *encodedString = response;
 
-    strcpy(encodedString + strlen(encodedString), AS_BLK_STR(input)->chars);
-
+    sprintf(encodedString, "$%d\r\n", inputLength);
+    strcat(encodedString, AS_BLK_STR(input)->chars);
     strcat(encodedString, "\r\n");
 
     return encodedString;
+
+}
+
+static void resp_to_blk(RespData* input, char** result_string, int *dest_capacity) {
+    switch (input->type) {
+        case RESP_SIMPLE_ERROR:
+        case RESP_SIMPLE_STRING: 
+            append_string(result_string, "+", dest_capacity);
+            append_string(result_string, AS_SIMPLE_STR(input), dest_capacity);
+            append_string(result_string, "\r\n", dest_capacity);
+            break;
+        case RESP_INTEGER:
+            char int_str[20];
+            sprintf(int_str, ":%d\r\n", AS_INTEGER(input));
+            append_string(result_string, int_str, dest_capacity);
+            break;
+        case RESP_BOOL:
+            if (AS_BOOL(input)) {
+                append_string(result_string, "#t\r\n", dest_capacity);
+            } else {
+                append_string(result_string, "#f\r\n", dest_capacity);
+            }
+            break;
+        case RESP_BULK_STRING:
+            append_string(result_string, convert_data_to_blk(input), dest_capacity);
+            break;
+        case RESP_ARRAY:
+            char arr_length_str[20];
+            sprintf(arr_length_str, "$%d\r\n", AS_ARR(input)->length);
+            append_string(result_string, arr_length_str, dest_capacity);
+            for (int i = 0; i < AS_ARR(input)->length; i++) {
+                resp_to_blk(AS_ARR(input)->values[i], result_string, dest_capacity);
+            }
+            break;
+        default:
+            break;
+    }
 }
 
