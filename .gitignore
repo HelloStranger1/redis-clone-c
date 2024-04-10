@@ -3,14 +3,14 @@ main.c
 main.o
 parser.o
 server.o
-Makefile
 client.cpp
 client.o
 client
 table.o
 data.o
 common.o
+server
 common.o
 data.o
 table.o
-.vscode/
+
