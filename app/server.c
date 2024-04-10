@@ -99,7 +99,6 @@ static int create_and_bind (char *port)
 }
 
 
-
 int main(int argc, char *argv[]) {
 	int server_fd;
 	int s, efd;	
@@ -110,12 +109,29 @@ int main(int argc, char *argv[]) {
 
 	// Disable output buffering
 	setbuf(stdout, NULL);
-	if (argc == 3) {
-		server_fd = create_and_bind(argv[2]);
-	} else {
-		server_fd = create_and_bind("6379");
+	char *port = "6379";
+	char *master_host = NULL, master_port = NULL;
+	for (int i = 1; i < argc; i++) {
+		if (!strcmp(argv[i], "--port")) {
+			port = argv[++i];
+			continue;
+		}
+		if (!strcmp(argv[i], "--replicaof")) {
+			if (i + 2 >= argc) {
+				fprintf(stderr, "Expected use of --replicaof: <MASTER_HOST> <MASTER_PORT> \n");
+				return -1;
+			}
+			master_host = argv[++i];
+			master_port = argv[++i];
+		}
 	}
 
+	server_fd = create_and_bind(port);
+
+	if (master_host != NULL && master_port != NULL) {
+		isReplica = true;
+		// Other stuff like connecting to master
+	}
 	if (server_fd == -1) {
 		printf("Socket creation failed: %s...\n", strerror(errno));
 		return 1;
