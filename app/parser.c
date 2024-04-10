@@ -195,12 +195,13 @@ static void resp_to_blk(RespData* input, char** result_string, int *dest_capacit
             append_string(result_string, AS_SIMPLE_STR(input), dest_capacity);
             append_string(result_string, "\r\n", dest_capacity);
             break;
-        case RESP_INTEGER:
+        case RESP_INTEGER: {
             char int_str[20];
             sprintf(int_str, ":%d\r\n", AS_INTEGER(input));
             append_string(result_string, int_str, dest_capacity);
             break;
-        case RESP_BOOL:
+        }
+        case RESP_BOOL: 
             if (AS_BOOL(input)) {
                 append_string(result_string, "#t\r\n", dest_capacity);
             } else {
@@ -210,7 +211,7 @@ static void resp_to_blk(RespData* input, char** result_string, int *dest_capacit
         case RESP_BULK_STRING:
             append_string(result_string, convert_data_to_blk(input), dest_capacity);
             break;
-        case RESP_ARRAY:
+        case RESP_ARRAY: {
             char arr_length_str[20];
             sprintf(arr_length_str, "$%d\r\n", AS_ARR(input)->length);
             append_string(result_string, arr_length_str, dest_capacity);
@@ -218,6 +219,7 @@ static void resp_to_blk(RespData* input, char** result_string, int *dest_capacit
                 resp_to_blk(AS_ARR(input)->values[i], result_string, dest_capacity);
             }
             break;
+        }
         default:
             break;
     }
