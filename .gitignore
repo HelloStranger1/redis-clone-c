@@ -10,3 +10,7 @@ client
 table.o
 data.o
 common.o
+common.o
+data.o
+table.o
+.vscode/
