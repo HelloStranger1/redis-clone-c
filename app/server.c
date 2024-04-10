@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <netdb.h>
+#include <arpa/inet.h>
 #include <fcntl.h>
 
 #include "parser.h"
@@ -67,8 +68,7 @@ static int make_socket_non_blocking(int sfd) {
 
 	return 0;
 }
-static int create_and_bind (char *port)
-{
+static int create_and_bind (char *port) {
 	struct addrinfo hints;
 	struct addrinfo *result, *rp;
 	int s, sfd;
@@ -113,15 +113,41 @@ static int create_and_bind (char *port)
 	return sfd;
 }
 
+int connect_to_master(char *host,  int port) {
+	int master_fd;
+	struct sockaddr_in master_addr;
+
+	master_fd = socket(AF_INET, SOCK_STREAM, 0);
+	if (master_fd == -1) {
+		fprintf(stderr, "Could open socket to master");
+		return -1;
+	}
+
+	memset(&master_addr, 0, sizeof(master_addr));
+	master_addr.sin_family = AF_INET;
+	master_addr.sin_port = htons(port);
+	if (inet_pton(AF_INET, host, &master_addr.sin_addr) <= 0) {
+		fprintf(stderr, "Invalid address/Address not supported");
+		return -1;
+	}
+
+	if (connect(master_fd, (struct sockaddr *)&master_addr, sizeof(master_addr)) < 0) {
+		fprintf(stderr, "Error connecting to master");
+		return -1;
+	}
+
+	return master_fd;
+}
 
 int main(int argc, char *argv[]) {
-	int server_fd;
+	int server_fd, master_fd = -1;
 	int s, efd;	
 	struct epoll_event event;
 	struct epoll_event *events;
 
 	char *port = "6379";
-	char *master_host = NULL, *master_port = NULL;
+	char *master_host = NULL;
+	int master_port = -1;
 
 	rand_str(replication_id, REPLICATION_ID_LEN + 1);
 
@@ -140,16 +166,23 @@ int main(int argc, char *argv[]) {
 				return -1;
 			}
 			master_host = argv[++i];
-			master_port = argv[++i];
+			master_port = atoi(argv[++i]);
 		}
 	}
 
 	server_fd = create_and_bind(port);
 
-	if (master_host != NULL && master_port != NULL) {
+	if (master_host != NULL && master_port != -1) {
 		isReplica = true;
-		// Other stuff like connecting to master
+		master_fd = connect_to_master(master_host, master_port);
+		if (master_fd == -1) {
+			fprintf(stderr, "Couldn't connect to master.");
+			exit(EXIT_FAILURE);
+		}
+		char *ping = "*1\r\n$4\r\nping\r\n";
+		send(master_fd, ping, sizeof(ping), 0);
 	}
+
 	if (server_fd == -1) {
 		printf("Socket creation failed: %s...\n", strerror(errno));
 		return 1;
@@ -237,6 +270,10 @@ int main(int argc, char *argv[]) {
 
 				}
 				continue;
+			} else if (master_fd == events[i].data.fd) {
+				/**
+				 * We got a msg from master
+				*/
 			} else {
 				/* We have data on the fd waiting to be read.
 				 We must consume it all because we are running in edge triggered mode.
