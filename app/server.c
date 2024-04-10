@@ -126,9 +126,24 @@ int connect_to_master(char *host,  int port) {
 	memset(&master_addr, 0, sizeof(master_addr));
 	master_addr.sin_family = AF_INET;
 	master_addr.sin_port = htons(port);
-	if (inet_pton(AF_INET, host, &master_addr.sin_addr) <= 0) {
-		fprintf(stderr, "Invalid address/Address not supported");
-		return -1;
+	if (inet_pton(AF_INET, host, &master_addr.sin_addr) > 0) {
+		printf("Using IPv4 address: %s\n", host);
+	} else {
+		// We try to resolve host
+		struct addrinfo hints, *result;
+        memset(&hints, 0, sizeof(struct addrinfo));
+        hints.ai_family = AF_INET; 
+        hints.ai_socktype = SOCK_STREAM; 
+
+        int ret = getaddrinfo(host, NULL, &hints, &result);
+        if (ret != 0) {
+            fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(ret));
+            exit(EXIT_FAILURE);
+        }
+
+        struct sockaddr_in *resolved_addr = (struct sockaddr_in *)result->ai_addr;
+        memcpy(&master_addr.sin_addr, &resolved_addr->sin_addr, sizeof(struct in_addr));
+        freeaddrinfo(result);
 	}
 
 	if (connect(master_fd, (struct sockaddr *)&master_addr, sizeof(master_addr)) < 0) {
