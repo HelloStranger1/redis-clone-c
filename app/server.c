@@ -195,7 +195,7 @@ int main(int argc, char *argv[]) {
 			exit(EXIT_FAILURE);
 		}
 		char *ping = "*1\r\n$4\r\nping\r\n";
-		send(master_fd, ping, sizeof(ping), 0);
+		send(master_fd, ping, strlen(ping), 0);
 	}
 
 	if (server_fd == -1) {
