@@ -22,17 +22,32 @@
 #define MAX_EVENTS 64
 #define DEFAULT_PORT 6379
 #define HASH_TABLE_SIZE (uint32_t) 512
+#define REPLICATION_ID_LEN 40
 
 
-static char pingCmd[] = "PING";
-static char echoCmd[] = "ECHO";
-static char setCmd[] = "SET";
-static char getCmd[] = "GET";
+#define SET_CMD "SET"
+#define GET_CMD "GET"
+#define PING_CMD "PING"
+#define ECHO_CMD "ECHO"
 
 bool isReplica = false;
+char replication_id[REPLICATION_ID_LEN + 1];
+int offset = 0;
 
 hash_table *ht;
 void run_command(int client_fd, BlkStr *command, DataArr* args);
+
+void rand_str(char *dest, size_t length) {
+    char charset[] = "0123456789"
+                     "abcdefghijklmnopqrstuvwxyz"
+                     "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+    while (length-- > 0) {
+        size_t index = (double) rand() / RAND_MAX * (sizeof charset - 1);
+        *dest++ = charset[index];
+    }
+    *dest = '\0';
+}
 
 static int make_socket_non_blocking(int sfd) {
 	int flags, s;
@@ -105,12 +120,15 @@ int main(int argc, char *argv[]) {
 	struct epoll_event event;
 	struct epoll_event *events;
 
+	char *port = "6379";
+	char *master_host = NULL, *master_port = NULL;
+
+	rand_str(replication_id, REPLICATION_ID_LEN + 1);
+
 	ht = hash_table_create(HASH_TABLE_SIZE, hash_string, free_data);
 
 	// Disable output buffering
 	setbuf(stdout, NULL);
-	char *port = "6379";
-	char *master_host = NULL, master_port = NULL;
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--port")) {
 			port = argv[++i];
@@ -333,6 +351,17 @@ void run_info(int client_fd, DataArr *args) {
 			} else {
 				strcat(rawResponse, "role:master");
 			}
+
+			strcat(rawResponse, "\n");
+			strcat(rawResponse, "master_replid:");
+			strcat(rawResponse, replication_id);
+
+			strcat(rawResponse, "\n");
+			strcat(rawResponse, "master_repl_offset:");
+			char repl_offset[24];
+			sprintf(repl_offset, "%d", offset);
+			strcat(rawResponse, repl_offset);
+			
 			// Here we add more values in replication
 			i++;
 		}
@@ -349,12 +378,12 @@ void run_info(int client_fd, DataArr *args) {
 }
 
 void run_command(int client_fd, BlkStr *command, DataArr* args) {
-	if(!strcasecmp(command->chars, pingCmd)) {
+	if(!strcasecmp(command->chars, PING_CMD)) {
 		send(client_fd, "+PONG\r\n", strlen("+PONG\r\n"), 0);
 		return;
 	}
 
-	if (!strcasecmp(command->chars, echoCmd)) {
+	if (!strcasecmp(command->chars, ECHO_CMD)) {
 		RespData *arg = args->values[1];
 		char* response = convert_data_to_blk(arg);
 		send(client_fd, response, strlen(response), 0);
@@ -362,7 +391,7 @@ void run_command(int client_fd, BlkStr *command, DataArr* args) {
 		return;
 	}
 
-	if (!strcasecmp(command->chars, setCmd)) {
+	if (!strcasecmp(command->chars, SET_CMD)) {
 		if (args->length < 3) {
 			fprintf(stderr, "Not enough args for SET command. ");
 			return;
@@ -374,7 +403,7 @@ void run_command(int client_fd, BlkStr *command, DataArr* args) {
 		return;
 	}
 
-	if (!strcasecmp(command->chars, getCmd)) {
+	if (!strcasecmp(command->chars, GET_CMD)) {
 		BlkStr* key = AS_BLK_STR(args->values[1]);
 		void *value = hash_table_get(ht, key->chars);
 		if (value == NULL) {
