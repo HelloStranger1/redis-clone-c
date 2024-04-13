@@ -1,8 +1,6 @@
 #ifndef redis_data_h
 #define redis_data_h
 
-#include <stdlib.h>
-#include <stdbool.h>
 #include "common.h"
 
 typedef enum {
@@ -68,8 +66,7 @@ typedef struct RespData {
 #define NULL_DATA ((RespData){RESP_NULL, {.integer = 0}})
 */
 
-void free_data(void *data);
-void freeData(RespData* data);
+void free_data(void *resp_data);
 void printData(RespData* data);
 RespData* copy_data(RespData* data);
 uint32_t hash_string(const char* key, size_t length);

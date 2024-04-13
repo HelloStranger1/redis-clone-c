@@ -1,5 +1,3 @@
-#include <stdio.h>
-#include <stdlib.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
@@ -7,9 +5,7 @@
 #include <strings.h>
 #include <sys/types.h>
 #include <sys/epoll.h>
-#include <errno.h>
 #include <unistd.h>
-#include <pthread.h>
 #include <netdb.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
@@ -52,18 +48,6 @@ void replica_arr_write(ReplicaArr arr, int replica_fd) {
 }
 
 void run_command(int client_fd, BlkStr *command, DataArr* args);
-
-void rand_str(char *dest, size_t length) {
-    char charset[] = "0123456789"
-                     "abcdefghijklmnopqrstuvwxyz"
-                     "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-
-    while (length-- > 0) {
-        size_t index = (double) rand() / RAND_MAX * (sizeof charset - 1);
-        *dest++ = charset[index];
-    }
-    *dest = '\0';
-}
 
 static int make_socket_non_blocking(int sfd) {
 	int flags, s;
@@ -192,8 +176,7 @@ int main(int argc, char *argv[]) {
 		}
 		if (!strcmp(argv[i], "--replicaof")) {
 			if (i + 2 >= argc) {
-				fprintf(stderr, "Expected use of --replicaof: <MASTER_HOST> <MASTER_PORT> \n");
-				return -1;
+				die("Expected use of --replicaof: <MASTER_HOST> <MASTER_PORT> \n");
 			}
 			isReplica = true;
 			master_host = argv[++i];
@@ -206,25 +189,15 @@ int main(int argc, char *argv[]) {
 	if (isReplica) {
 		master_fd = connect_to_master(master_host, master_port);
 		if (master_fd == -1) {
-			fprintf(stderr, "Couldn't connect to master.");
-			exit(EXIT_FAILURE);
+			die("Couldn't connect to master");
 		}
 		char *ping = "*1\r\n$4\r\nping\r\n";
 		send(master_fd, ping, strlen(ping), 0);
-
-		RespData replconf = {.type = RESP_ARRAY};
-		BlkStr arg1Blk = {.length = 8, .chars = "REPLCONF"};
-		BlkStr arg2Blk = {.length = 14, .chars = "listening-port"};
-		BlkStr arg3Blk = {.length = strlen(port), .chars = port};
-		RespData arg1 = {.type = RESP_BULK_STRING, .as.blk_str = &arg1Blk};
-		RespData arg2 = {.type = RESP_BULK_STRING, .as.blk_str = &arg2Blk};
-		RespData arg3 = {.type = RESP_BULK_STRING, .as.blk_str = &arg3Blk};
-		replconf.as.arr->length = 3;
-		RespData* args[] = {&arg1, &arg2, &arg3};
-		replconf.as.arr->values = args;
 		
-		char* msg = convert_data_to_blk(&replconf);
-		send(master_fd, msg, strlen(msg), 0);
+		char *msg1 = "*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$4\r\n";
+		send(master_fd, msg1, strlen(msg1), 0);
+		send(master_fd, port, strlen(port), 0);
+		send(master_fd, "\r\n", 2, 0);
 		char *msg2 = "*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n";
 		send(master_fd, msg2, strlen(msg2), 0);
 
@@ -254,16 +227,14 @@ int main(int argc, char *argv[]) {
 
 	efd = epoll_create1(0);
 	if (efd == -1) {
-		perror("epoll_create");
-		return 1;
+		die("epoll_create");
 	}
 
 	event.data.fd = server_fd;
 	event.events = EPOLLIN | EPOLLET;
 	s = epoll_ctl(efd, EPOLL_CTL_ADD, server_fd, &event);
 	if (s == -1) {
-		perror("epoll_ctl");
-		return 1;
+		die("epoll_ctl");
 	}
 	
 	// Buffer where events are returned
@@ -322,10 +293,30 @@ int main(int argc, char *argv[]) {
 
 				}
 				continue;
-			} else if (master_fd == events[i].data.fd) {
+			} else if (isReplica && master_fd == events[i].data.fd) {
 				/**
 				 * We got a msg from master
 				*/
+				int done = 0;
+
+			 	for (;;) {
+					ssize_t count;
+					char buffer[BUFFER_SIZE] = {0};
+
+					count = read(master_fd, buffer, sizeof(buffer));
+					if (count == -1) {
+						if (errno != EAGAIN) {
+							perror("read");
+							done = 1;
+						}
+						break;
+					} else if (count == 0) {
+						done = 1;
+						break;
+					}
+					printf("Recieved message from master: %s\n", buffer);
+				}
+
 
 			} else {
 				/* We have data on the fd waiting to be read.
@@ -349,11 +340,7 @@ int main(int argc, char *argv[]) {
 						break;
 					}
 					printf("Recieved message: %s\n", buffer);
-					if (!strcmp(buffer, "*1\r\n$4\r\nquit\r\n")) {
-						printf("Closed connection on descriptor %d\n", events[i].data.fd);
-						close(events[i].data.fd);
-						goto cleanup;
-					}
+					
 					char* tmp = buffer;
 					RespData* data = parse_resp_data(&tmp);
 					if(data->type != RESP_ARRAY) {
@@ -369,7 +356,7 @@ int main(int argc, char *argv[]) {
 					printf("We parsed %s\n", AS_BLK_STR(command)->chars);
 
 					run_command(events[i].data.fd, AS_BLK_STR(command), AS_ARR(data));
-					freeData(data);
+					free_data(data);
 				}
 				if (done) {
 					printf("Closed connection on descriptor %d\n", events[i].data.fd);

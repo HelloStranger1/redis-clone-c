@@ -1,11 +1,6 @@
 #include <string.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <stdbool.h>
 
 #include "parser.h"
-
-#define ALLOCATE_ARR(type, count) (type*) malloc(sizeof(type) * count)
 
 static void resp_to_blk(RespData* input, char** result_string, int *dest_capacity);
 
@@ -42,8 +37,7 @@ static int convert_to_int(char** c) {
 static RespData* parse_resp_arr(char** c) {
     RespData* resp = malloc(sizeof(*resp));
     if (!resp) {
-        fprintf(stderr, "Couldn't allocate memory.");
-        exit(EXIT_FAILURE);
+        die("Couldn't allocate memory");
     }
 
     resp->type = RESP_ARRAY;
@@ -52,12 +46,13 @@ static RespData* parse_resp_arr(char** c) {
     int itemCount = convert_to_int(c);
     if (itemCount == -1) {
        printf("Couldn't convert length to number. original string was: %s", ((*c) - 2)); 
+       free(resp->as.arr);
        free(resp);
        return NULL;
     }
 
     resp->as.arr->length = itemCount;
-    resp->as.arr->values = ALLOCATE_ARR(RespData*, itemCount);
+    resp->as.arr->values = (RespData**) malloc(sizeof(RespData*) * itemCount);
 
     for (int i = 0; i < itemCount; i++) {
         AS_ARR(resp)->values[i] = parse_resp_data(c);
@@ -69,8 +64,7 @@ static RespData* parse_resp_arr(char** c) {
 static RespData* parse_resp_blk_string(char** c) {
     RespData* resp = malloc(sizeof(*resp));
     if (!resp) {
-        fprintf(stderr, "Couldn't allocate memory.");
-        exit(EXIT_FAILURE);
+        die("Couldn't allocate memory");
     }
 
     resp->type = RESP_BULK_STRING;
@@ -82,20 +76,29 @@ static RespData* parse_resp_blk_string(char** c) {
         return resp;
     }
 
-    int strLen = convert_to_int(c);
-    resp->as.blk_str->length = strLen;
-    resp->as.blk_str->chars = malloc(strLen + 1);
-    memcpy(resp->as.blk_str->chars, *c, strLen);
-    resp->as.blk_str->chars[strLen] = '\0';
-    *c += strLen + 2;
+    int str_len = convert_to_int(c);
+    if (str_len == -1) {
+       printf("Couldn't convert length to number. original string was: %s", ((*c) - 2)); 
+       free(resp->as.blk_str);
+       free(resp);
+       return NULL;
+    }
+
+    resp->as.blk_str->length = str_len;
+    resp->as.blk_str->chars = malloc( sizeof(char) * (str_len + 1));
+    if (!resp->as.blk_str->chars) {
+        die("Couldn't allocate memory");
+    }
+    memcpy(resp->as.blk_str->chars, *c, str_len);
+    resp->as.blk_str->chars[str_len] = '\0';
+    *c += str_len + 2;
     return resp;
 }
 
 static RespData* parse_resp_integer(char** c) {
     RespData* resp = malloc(sizeof(*resp));
     if (!resp) {
-        fprintf(stderr, "Couldn't allocate memory.");
-        exit(EXIT_FAILURE);
+        die("Couldn't allocate memory");
     }
 
     resp->type = RESP_INTEGER;
@@ -106,6 +109,13 @@ static RespData* parse_resp_integer(char** c) {
     }
 
     resp->as.integer = convert_to_int(c);
+    if (resp->as.integer == -1) {
+        // convert_to_int returns a positive value, so it failed here
+        printf("Couldn't convert string to number. original string was: %s", ((*c) - 2)); 
+        free(resp);
+        return NULL;
+    }
+
     if (isNegative) {
         resp->as.integer = (-1)*AS_INTEGER(resp);
     }
