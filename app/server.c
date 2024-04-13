@@ -28,7 +28,7 @@
 #define ECHO_CMD "ECHO"
 
 bool isReplica = false;
-bool stepInHandshake = -1; // We hold were we are in the handshake
+int stepInHandshake = -1; // We hold were we are in the handshake
 char replication_id[REPLICATION_ID_LEN + 1];
 int offset = 0;
 
@@ -327,7 +327,7 @@ int main(int argc, char *argv[]) {
 
 						continue;
 					}
-					RespData* data = parse_resp_data(*tmp);
+					RespData* data = parse_resp_data(&tmp);
 				}
 			} else {
 				/* We have data on the fd waiting to be read.
