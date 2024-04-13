@@ -463,6 +463,7 @@ void run_command(int client_fd, BlkStr *command, DataArr* args) {
 	if (!strcasecmp(command->chars, ECHO_CMD)) {
 		RespData *arg = args->values[1];
 		char* response = convert_data_to_blk(arg);
+		fprintf(stderr, "response of echo is: %s", response);
 		send(client_fd, response, strlen(response), 0);
 		free(response);
 		return;
