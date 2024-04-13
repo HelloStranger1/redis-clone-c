@@ -28,6 +28,7 @@
 #define ECHO_CMD "ECHO"
 
 bool isReplica = false;
+bool stepInHandshake = -1; // We hold were we are in the handshake
 char replication_id[REPLICATION_ID_LEN + 1];
 int offset = 0;
 
@@ -193,13 +194,7 @@ int main(int argc, char *argv[]) {
 		}
 		char *ping = "*1\r\n$4\r\nping\r\n";
 		send(master_fd, ping, strlen(ping), 0);
-		
-		char *msg1 = "*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$4\r\n";
-		send(master_fd, msg1, strlen(msg1), 0);
-		send(master_fd, port, strlen(port), 0);
-		send(master_fd, "\r\n", 2, 0);
-		char *msg2 = "*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n";
-		send(master_fd, msg2, strlen(msg2), 0);
+		stepInHandshake = 1;
 
 	} else {
 		replicas = malloc(sizeof(*replicas));
@@ -315,9 +310,25 @@ int main(int argc, char *argv[]) {
 						break;
 					}
 					printf("Recieved message from master: %s\n", buffer);
+					char* tmp = buffer;
+					if (stepInHandshake != -1 && stepInHandshake < 4) {
+						// We are doing the handshake
+						if (stepInHandshake == 1) {
+							char *msg1 = "*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$4\r\n";
+							send(master_fd, msg1, strlen(msg1), 0);
+							send(master_fd, port, strlen(port), 0);
+							send(master_fd, "\r\n", 2, 0);
+							stepInHandshake++;
+						} else if (stepInHandshake == 2) {
+							char *msg2 = "*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n";
+							send(master_fd, msg2, strlen(msg2), 0);
+							stepInHandshake++;
+						}
+
+						continue;
+					}
+					RespData* data = parse_resp_data(*tmp);
 				}
-
-
 			} else {
 				/* We have data on the fd waiting to be read.
 				 We must consume it all because we are running in edge triggered mode.
