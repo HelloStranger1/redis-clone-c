@@ -206,7 +206,7 @@ static void resp_to_blk(RespData* input, char** result_string, int *dest_capacit
             append_string(result_string, "\r\n", dest_capacity);
             break;
         case RESP_INTEGER: {
-            char int_str[20];
+            char int_str[20] = {0};
             sprintf(int_str, ":%d\r\n", AS_INTEGER(input));
             append_string(result_string, int_str, dest_capacity);
             break;
@@ -219,10 +219,10 @@ static void resp_to_blk(RespData* input, char** result_string, int *dest_capacit
             }
             break;
         case RESP_BULK_STRING:
-            append_string(result_string, convert_data_to_blk(input), dest_capacity);
+            append_string(result_string, convert_blk_data_to_str(input), dest_capacity);
             break;
         case RESP_ARRAY: {
-            char arr_length_str[20];
+            char arr_length_str[20] = {0};
             sprintf(arr_length_str, "$%d\r\n", AS_ARR(input)->length);
             append_string(result_string, arr_length_str, dest_capacity);
             for (int i = 0; i < AS_ARR(input)->length; i++) {
