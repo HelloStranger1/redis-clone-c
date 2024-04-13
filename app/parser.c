@@ -173,6 +173,7 @@ char *convert_data_to_blk(RespData* input) {
     // We use a defulat capacity of 64 since its enough most of the time
     int capacity = 64;
     char *result = malloc(capacity * sizeof(char));
+    result[0] = '\0';
     resp_to_blk(input, &result, &capacity);
     return result;
 }
