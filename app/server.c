@@ -248,7 +248,7 @@ int main(int argc, char *argv[]) {
 		replicas->count = 0;
 		replicas->fd_arr = NULL;
 	}
-	
+
 	for (;;) {
 		int n, i;
 
@@ -328,14 +328,18 @@ int main(int argc, char *argv[]) {
 					if (stepInHandshake != -1 && stepInHandshake < 4) {
 						// We are doing the handshake
 						if (stepInHandshake == 1) {
-							char *msg1 = "*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$4\r\n";
-							send(master_fd, msg1, strlen(msg1), 0);
+							char *msg = "*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$4\r\n";
+							send(master_fd, msg, strlen(msg), 0);
 							send(master_fd, port, strlen(port), 0);
 							send(master_fd, "\r\n", 2, 0);
 							stepInHandshake++;
 						} else if (stepInHandshake == 2) {
-							char *msg2 = "*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n";
-							send(master_fd, msg2, strlen(msg2), 0);
+							char *msg = "*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n";
+							send(master_fd, msg, strlen(msg), 0);
+							stepInHandshake++;
+						} else if (stepInHandshake == 3) {
+							char *msg = "*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n";
+							send(master_fd, msg, strlen(msg), 0);
 							stepInHandshake++;
 						}
 
