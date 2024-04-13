@@ -187,21 +187,6 @@ int main(int argc, char *argv[]) {
 
 	server_fd = create_and_bind(port);
 
-	if (isReplica) {
-		master_fd = connect_to_master(master_host, master_port);
-		if (master_fd == -1) {
-			die("Couldn't connect to master");
-		}
-		char *ping = "*1\r\n$4\r\nping\r\n";
-		send(master_fd, ping, strlen(ping), 0);
-		stepInHandshake = 1;
-
-	} else {
-		replicas = malloc(sizeof(*replicas));
-		replicas->capacity = 0;
-		replicas->count = 0;
-		replicas->fd_arr = NULL;
-	}
 
 	if (server_fd == -1) {
 		printf("Socket creation failed: %s...\n", strerror(errno));
@@ -235,6 +220,35 @@ int main(int argc, char *argv[]) {
 	// Buffer where events are returned
 	events = calloc(MAX_EVENTS, sizeof(event));
 
+	if (isReplica) {
+		master_fd = connect_to_master(master_host, master_port);
+		if (master_fd == -1) {
+			die("Couldn't connect to master");
+		}
+		s = make_socket_non_blocking(master_fd);
+		if (s == -1) {
+			printf("Failed to make socket not blocking\n");
+			return 1;
+		}
+		event.data.fd = master_fd;
+		event.events = EPOLLIN | EPOLLET;
+		s = epoll_ctl(efd, EPOLL_CTL_ADD, master_fd, &event);
+		if (s == -1) {
+			perror("epoll_ctl");
+			return 1;
+		}
+
+		char *ping = "*1\r\n$4\r\nping\r\n";
+		send(master_fd, ping, strlen(ping), 0);
+		stepInHandshake = 1;
+
+	} else {
+		replicas = malloc(sizeof(*replicas));
+		replicas->capacity = 0;
+		replicas->count = 0;
+		replicas->fd_arr = NULL;
+	}
+	
 	for (;;) {
 		int n, i;
 
