@@ -169,7 +169,7 @@ RespData* parse_resp_data(char** input) {
         case '#':
             return parse_resp_bool(input);
         default:
-            printf("either not yet implemented or uknown type");
+            printf("either not yet implemented or uknown type, type was %c\n", type);
             return NULL;
     }
 }
