@@ -7,7 +7,7 @@
 #include "data.h"
 
 RespData* parse_resp_data(char** input);
-char* convert_data_to_blk(RespData* input);
+char *encode_resp_data(RespData* data);
 
 
 #endif

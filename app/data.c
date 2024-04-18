@@ -25,9 +25,6 @@ RespData* copy_data(RespData* data) {
         case RESP_BOOL:
             copied->as.boolean = AS_BOOL(data);
             break;
-        case RESP_NULL: 
-            copied->as.integer = 0;
-            break;
         case RESP_ARRAY:
             copied->as.arr = (DataArr*) malloc(sizeof(DataArr));
             copied->as.arr->length = AS_ARR(data)->length;
@@ -56,9 +53,6 @@ void free_data(void *resp_data) {
     switch (data->type) {
         case RESP_INTEGER:
         case RESP_BOOL:
-        case RESP_NULL:
-            free(data);
-            break;
         case RESP_ARRAY:
             for (int i = 0; i < AS_ARR(data)->length; i++) {
                 free_data(AS_ARR(data)->values[i]);

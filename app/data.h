@@ -9,7 +9,6 @@ typedef enum {
     RESP_INTEGER,
     RESP_BULK_STRING,
     RESP_ARRAY,
-    RESP_NULL,
     RESP_BOOL,
     // RESP_DOUBLE,
     // RESP_BIG_NUM,
@@ -41,13 +40,7 @@ typedef struct RespData {
     } as;
 } RespData;
 
-#define IS_SIMPLE_STR(data) ((data)->type == RESP_SIMPLE_STRING)
-#define IS_SIMPLE_ERR(data) ((data)->type == RESP_SIMPLE_ERROR)
-#define IS_BOOL(data) ((data)->type == RESP_BOOL)
-#define IS_NULL(data) ((data)->type == RESP_NULL)
-#define IS_INTEGER(data) ((data)->type == RESP_INTEGER)
-#define IS_BLK_STR(data) ((data)->type == RESP_BULK_STRING)
-#define IS_ARR(data) ((data)->type == RESP_ARRAY)
+
 
 #define AS_SIMPLE_STR(resp_data) ((resp_data)->as.simple_str)
 #define AS_SIMPLE_ERROR(resp_data) ((resp_data)->as.simple_str)

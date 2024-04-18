@@ -12,41 +12,29 @@
 
 #include "parser.h"
 #include "data.h"
+#include "resp_handler.h"
 #include "table.h"
-#include "common.h"
+#include "server.h"
 
 #define BUFFER_SIZE 1024
 #define MAX_EVENTS 64
-#define DEFAULT_PORT 6379
+#define DEFAULT_PORT "6379"
 #define HASH_TABLE_SIZE (uint32_t) 512
-#define REPLICATION_ID_LEN 40
 
 
 #define SET_CMD "SET"
 #define GET_CMD "GET"
 #define PING_CMD "PING"
+#define INFO_CMD "INFO"
+#define REPLCONF_CMD "replconf"
+#define PSYNC_CMD "psync"
 #define ECHO_CMD "ECHO"
 
-bool isReplica = false;
 int stepInHandshake = -1; // We hold were we are in the handshake
-char replication_id[REPLICATION_ID_LEN + 1];
-int offset = 0;
 
+struct ServerMetadata meta_data;
+struct MasterMetadata master_meta_data;
 hash_table *ht;
-
-typedef struct {
-	int count;
-	int capacity;
-	int *fd_arr;
-} ReplicaArr;
-
-void replica_arr_write(ReplicaArr arr, int replica_fd) {
-	if (arr.count + 1 >= arr.capacity) {
-		int new_capacity = (arr.capacity > 8) ? (arr.capacity * 2) : 8;
-		arr.fd_arr = realloc(arr.fd_arr, new_capacity * sizeof(*arr.fd_arr));
-	}
-	arr.fd_arr[arr.count] = replica_fd;
-}
 
 void run_command(int client_fd, BlkStr *command, DataArr* args);
 
@@ -154,39 +142,92 @@ int connect_to_master(char *host,  int port) {
 	return master_fd;
 }
 
+int handle_client_connection(int client_fd) {
+	/**
+	 * We have data on the fd waiting to be read.
+	 * We must consume it all because we are running in edge triggered mode.
+	*/
+	int done = 0;
+
+	for (;;) {
+		ssize_t count;
+		char buffer[BUFFER_SIZE] = {0};
+
+		count = read(client_fd, buffer, sizeof(buffer));
+		if (count == -1) {
+			if (errno != EAGAIN) {
+				perror("read");
+				done = 1;
+			}
+			break;
+		} else if (count == 0) {
+			done = 1;
+			break;
+		}
+		printf("Recieved message: %s\n", buffer);
+		
+		char* tmp = buffer;
+
+		RespData* data = parse_resp_data(&tmp);
+		if(data->type != RESP_ARRAY) {
+			printf("Expected array");
+			exit(EXIT_FAILURE);
+		}
+
+		RespData* command = data->as.arr->values[0];
+		if (command->type != RESP_BULK_STRING) {
+			printf("Command should be a bulk string");
+			exit(EXIT_FAILURE);
+		}
+
+		printf("We parsed %s\n", AS_BLK_STR(command)->chars);
+
+		run_command(client_fd, AS_BLK_STR(command), AS_ARR(data));
+		free_data(data);
+	}
+
+	return done;
+	
+}
+
 int main(int argc, char *argv[]) {
 	int server_fd, master_fd = -1;
 	int s, efd;	
 	struct epoll_event event;
 	struct epoll_event *events;
+	
+	meta_data.port = DEFAULT_PORT;
+	meta_data.is_replica = false;
+	meta_data.replication_offset = 0;
+	meta_data.replica_count = 0;
 
-	char *port = "6379";
-	char *master_host = NULL;
-	int master_port = -1;
-	ReplicaArr* replicas = NULL;
-	rand_str(replication_id, REPLICATION_ID_LEN + 1);
+//	char *master_host = NULL;
+	//int master_port = -1;
+
+	rand_str(meta_data.replication_id, REPLICATION_ID_LEN + 1);
 
 	ht = hash_table_create(HASH_TABLE_SIZE, hash_string, free_data);
 
 	// Disable output buffering
 	setbuf(stdout, NULL);
+
+	// Handle command line arguments
 	for (int i = 1; i < argc; i++) {
 		if (!strcmp(argv[i], "--port")) {
-			port = argv[++i];
+			meta_data.port = argv[++i];
 			continue;
 		}
 		if (!strcmp(argv[i], "--replicaof")) {
 			if (i + 2 >= argc) {
 				die("Expected use of --replicaof: <MASTER_HOST> <MASTER_PORT> \n");
 			}
-			isReplica = true;
-			master_host = argv[++i];
-			master_port = atoi(argv[++i]);
+			meta_data.is_replica = true;
+			master_meta_data.master_host = argv[++i];
+			master_meta_data.master_port = atoi(argv[++i]);
 		}
 	}
 
-	server_fd = create_and_bind(port);
-
+	server_fd = create_and_bind(meta_data.port);
 
 	if (server_fd == -1) {
 		printf("Socket creation failed: %s...\n", strerror(errno));
@@ -220,16 +261,20 @@ int main(int argc, char *argv[]) {
 	// Buffer where events are returned
 	events = calloc(MAX_EVENTS, sizeof(event));
 
-	if (isReplica) {
-		master_fd = connect_to_master(master_host, master_port);
+	if (meta_data.is_replica) {
+		master_fd = connect_to_master(master_meta_data.master_host, master_meta_data.master_port);
 		if (master_fd == -1) {
 			die("Couldn't connect to master");
 		}
+
+		master_meta_data.master_fd = master_fd;
+
 		s = make_socket_non_blocking(master_fd);
 		if (s == -1) {
 			printf("Failed to make socket not blocking\n");
 			return 1;
 		}
+
 		event.data.fd = master_fd;
 		event.events = EPOLLIN | EPOLLET;
 		s = epoll_ctl(efd, EPOLL_CTL_ADD, master_fd, &event);
@@ -238,20 +283,11 @@ int main(int argc, char *argv[]) {
 			return 1;
 		}
 
-		char *ping = "*1\r\n$4\r\nping\r\n";
-		send(master_fd, ping, strlen(ping), 0);
-		stepInHandshake = 1;
-
-	} else {
-		replicas = malloc(sizeof(*replicas));
-		replicas->capacity = 0;
-		replicas->count = 0;
-		replicas->fd_arr = NULL;
+		send_simple_string(master_fd, "ping");
 	}
 
 	for (;;) {
 		int n, i;
-
 		n = epoll_wait(efd, events, MAX_EVENTS, -1);
 		for (i = 0; i < n; i++) {
 			if ((events[i].events & EPOLLERR) ||
@@ -302,92 +338,10 @@ int main(int argc, char *argv[]) {
 
 				}
 				continue;
-			} else if (isReplica && master_fd == events[i].data.fd) {
-				/**
-				 * We got a msg from master
-				*/
-				int done = 0;
-
-			 	for (;;) {
-					ssize_t count;
-					char buffer[BUFFER_SIZE] = {0};
-
-					count = read(master_fd, buffer, sizeof(buffer));
-					if (count == -1) {
-						if (errno != EAGAIN) {
-							perror("read");
-							done = 1;
-						}
-						break;
-					} else if (count == 0) {
-						done = 1;
-						break;
-					}
-					printf("Recieved message from master: %s\n", buffer);
-					char* tmp = buffer;
-					if (stepInHandshake != -1 && stepInHandshake < 4) {
-						// We are doing the handshake
-						if (stepInHandshake == 1) {
-							char *msg = "*3\r\n$8\r\nREPLCONF\r\n$14\r\nlistening-port\r\n$4\r\n";
-							send(master_fd, msg, strlen(msg), 0);
-							send(master_fd, port, strlen(port), 0);
-							send(master_fd, "\r\n", 2, 0);
-							stepInHandshake++;
-						} else if (stepInHandshake == 2) {
-							char *msg = "*3\r\n$8\r\nREPLCONF\r\n$4\r\ncapa\r\n$6\r\npsync2\r\n";
-							send(master_fd, msg, strlen(msg), 0);
-							stepInHandshake++;
-						} else if (stepInHandshake == 3) {
-							char *msg = "*3\r\n$5\r\nPSYNC\r\n$1\r\n?\r\n$2\r\n-1\r\n";
-							send(master_fd, msg, strlen(msg), 0);
-							stepInHandshake++;
-						}
-
-						continue;
-					}
-					RespData* data = parse_resp_data(&tmp);
-				}
 			} else {
-				/* We have data on the fd waiting to be read.
-				 We must consume it all because we are running in edge triggered mode.
-				*/
-				int done = 0;
-
-				for (;;) {
-					ssize_t count;
-					char buffer[BUFFER_SIZE] = {0};
-
-					count = read(events[i].data.fd, buffer, sizeof(buffer));
-					if (count == -1) {
-						if (errno != EAGAIN) {
-							perror("read");
-							done = 1;
-						}
-						break;
-					} else if (count == 0) {
-						done = 1;
-						break;
-					}
-					printf("Recieved message: %s\n", buffer);
-					
-					char* tmp = buffer;
-					RespData* data = parse_resp_data(&tmp);
-					if(data->type != RESP_ARRAY) {
-						printf("Expected array. wtf");
-						exit(EXIT_FAILURE);
-					}
-					RespData* command = AS_ARR(data)->values[0];
-					if (command->type != RESP_BULK_STRING) {
-						printf("command should be a bulk string");
-						exit(EXIT_FAILURE);
-					}
-
-					printf("We parsed %s\n", AS_BLK_STR(command)->chars);
-
-					run_command(events[i].data.fd, AS_BLK_STR(command), AS_ARR(data));
-					free_data(data);
-				}
-				if (done) {
+				int done = handle_client_connection(events[i].data.fd);
+				// We only want to close the connection if its a client and not the master
+				if (done == 1 && !(meta_data.is_replica && master_meta_data.master_fd == events[i].data.fd)) {
 					printf("Closed connection on descriptor %d\n", events[i].data.fd);
 					close(events[i].data.fd);
 				}
@@ -395,7 +349,6 @@ int main(int argc, char *argv[]) {
 				
 		}
 	}
-cleanup:
 	free(events);
 	hash_table_free(ht);
 	close(server_fd);
@@ -403,7 +356,7 @@ cleanup:
 	return 0;
 }
 
-void run_set(int socket_fd, RespData *key, RespData *value, DataArr *args) {
+void run_set(int socket_fd, RespData *key, RespData *value, DataArr *args, bool should_responde) {
 	int i = 3; // Start of arguments
 	/**
 	 * Args go in this order: [NX | XX] [GET] [PX | EXAT | KEEPTTL ...]
@@ -418,8 +371,9 @@ void run_set(int socket_fd, RespData *key, RespData *value, DataArr *args) {
 			printf("Overwrote data: %s\n", AS_BLK_STR((RespData*)inserted)->chars);
 			free_data(inserted);
 		}
-		char* ok = "+OK\r\n";
-		send(socket_fd, ok, strlen(ok), 0);
+		if (should_responde) {
+			send_simple_string(socket_fd, "OK");
+		}
 		return;
 	}
 	// We have args. We check one by one. 
@@ -440,8 +394,10 @@ void run_set(int socket_fd, RespData *key, RespData *value, DataArr *args) {
 		long long expiryMilli = atoi(AS_BLK_STR(args->values[++i])->chars);
 		hash_table_insert(ht, AS_BLK_STR(key)->chars, copy_data(value), current_timestamp() + expiryMilli);
 	}
-	char* ok = "+OK\r\n";
-	send(socket_fd, ok, strlen(ok), 0);
+	
+	if (should_responde) {
+		send_simple_string(socket_fd, "OK");
+	}
 	
 }
 
@@ -452,28 +408,26 @@ void run_info(int client_fd, DataArr *args) {
 	while (i < args->length) {
 		if (!strcasecmp(AS_BLK_STR(args->values[i])->chars, "Replication")) {
 			strcat(rawResponse, "# Replication");
-			if (isReplica) {
-				strcat(rawResponse, "role:slave");
+			if (meta_data.is_replica) {
+				strcat(rawResponse, "role:slave\n");
 			} else {
-				strcat(rawResponse, "role:master");
+				strcat(rawResponse, "role:master\n");
 			}
-
-			strcat(rawResponse, "\n");
 			strcat(rawResponse, "master_replid:");
-			strcat(rawResponse, replication_id);
+			strcat(rawResponse, meta_data.replication_id);
 
-			strcat(rawResponse, "\n");
-			strcat(rawResponse, "master_repl_offset:");
-			char repl_offset[24];
-			sprintf(repl_offset, "%d", offset);
-			strcat(rawResponse, repl_offset);
+			strcat(rawResponse, "\nmaster_repl_offset:");
 			
+			sprintf(rawResponse + strlen(rawResponse), "%d", meta_data.replication_offset);
 			// Here we add more values in replication
 			i++;
 		}
 		// Here we add support for more section
 	}
 	
+	send_bulk_string(client_fd, rawResponse);
+	
+	/*
 	char encodedLen[10];
 	int lenlen = sprintf(encodedLen, "%ld", strlen(rawResponse));
 	send(client_fd, "$", 1, 0);
@@ -481,20 +435,27 @@ void run_info(int client_fd, DataArr *args) {
 	send(client_fd, "\r\n", 2, 0);
 	send(client_fd, rawResponse, strlen(rawResponse), 0);
 	send(client_fd, "\r\n", 2, 0);
+	*/
 }
 
 void run_command(int client_fd, BlkStr *command, DataArr* args) {
+	bool should_respond_back = !(meta_data.is_replica && client_fd == master_meta_data.master_fd);
+
 	if(!strcasecmp(command->chars, PING_CMD)) {
-		send(client_fd, "+PONG\r\n", strlen("+PONG\r\n"), 0);
+		if (should_respond_back) {
+			send_bulk_string(client_fd, "PONG");
+		}
 		return;
 	}
 
 	if (!strcasecmp(command->chars, ECHO_CMD)) {
 		RespData *arg = args->values[1];
-		char* response = convert_data_to_blk(arg);
-		fprintf(stderr, "response of echo is: %s", response);
-		send(client_fd, response, strlen(response), 0);
-		free(response);
+		
+		if (should_respond_back) {
+			char* response = encode_resp_data(arg);
+			send(client_fd, response, strlen(response), 0);
+			free(response);
+		}
 		return;
 	}
 
@@ -506,7 +467,7 @@ void run_command(int client_fd, BlkStr *command, DataArr* args) {
 		RespData *key = args->values[1];
 		RespData *value = args->values[2];
 
-		run_set(client_fd, key, value, args);
+		run_set(client_fd, key, value, args, should_respond_back);
 		return;
 	}
 
@@ -517,14 +478,37 @@ void run_command(int client_fd, BlkStr *command, DataArr* args) {
 			send(client_fd, "$-1\r\n", strlen("$-1\r\n"), 0);
 			return;
 		}
-		char* response = convert_data_to_blk((RespData*)value);
+		char* response = encode_resp_data((RespData*)value);
 		send(client_fd, response, strlen(response), 0);
 		free(response);
 		return;
 	}
 
-	if (!strcasecmp(command->chars, "INFO")) {
+	if (!strcasecmp(command->chars, INFO_CMD)) {
 		run_info(client_fd, args);
+		return;
+	}
+
+	if (!strcasecmp(command->chars, REPLCONF_CMD)) {
+		BlkStr* arg1 = AS_BLK_STR(args->values[1]);
+
+		if (!strcasecmp(arg1->chars, "listening-port")) {
+			BlkStr* arg2 = AS_BLK_STR(args->values[2]);
+
+			meta_data.replicas_fd[meta_data.replica_count] = client_fd;
+			meta_data.replica_count++;
+			printf("Replica is listening on port %s\n", arg2->chars);
+			send_simple_string(client_fd, "OK");
+		} else if (!strcasecmp(arg1->chars, "capa")) {
+			BlkStr* arg2 = AS_BLK_STR(args->values[2]);
+
+			printf("Replica has capability %s\n", arg2->chars);
+			send_simple_string(client_fd, "OK");
+		}
+		return;
+	}
+
+	if (!strcasecmp(command->chars, PSYNC_CMD)) {
 		return;
 	}
 	fprintf(stderr, "-ERR unkown command '%s'", command->chars);
