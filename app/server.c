@@ -35,6 +35,7 @@ int stepInHandshake = -1; // We hold were we are in the handshake
 struct ServerMetadata meta_data;
 struct MasterMetadata master_meta_data;
 hash_table *ht;
+int step_at_handshake = -1;
 
 void run_command(int client_fd, BlkStr *command, DataArr* args);
 
@@ -148,7 +149,6 @@ int handle_client_connection(int client_fd) {
 	 * We must consume it all because we are running in edge triggered mode.
 	*/
 	int done = 0;
-
 	for (;;) {
 		ssize_t count;
 		char buffer[BUFFER_SIZE] = {0};
@@ -169,6 +169,33 @@ int handle_client_connection(int client_fd) {
 		char* tmp = buffer;
 
 		RespData* data = parse_resp_data(&tmp);
+
+		if (data->type == RESP_SIMPLE_STRING) {
+			// We check that it is from master
+			if (!(meta_data.is_replica && client_fd == master_meta_data.master_fd)) {
+				printf("Expected array");
+				exit(EXIT_FAILURE);
+			}
+			if (!strcasecmp(data->as.simple_str, "pong")) {
+				step_at_handshake = 1;
+				char *response[] = {REPLCONF_CMD, "listening-port", meta_data.port};
+				send_arr_of_bulk_string(client_fd, response, 3);
+				continue;
+			} else if (step_at_handshake == 1) {
+				step_at_handshake = 2;
+				char *response[] = {REPLCONF_CMD, "capa", "psync2"};
+				send_arr_of_bulk_string(client_fd, response, 3);
+				continue;
+			} else if (step_at_handshake == 2) {
+				step_at_handshake = 3;
+				char *response[] = {PSYNC_CMD, "?", "-1"};
+				send_arr_of_bulk_string(client_fd, response, 3);
+				continue;
+			} else if (step_at_handshake == 3) {
+				// For now we ignore.
+				break;
+			}
+		}
 		if(data->type != RESP_ARRAY) {
 			printf("Expected array");
 			exit(EXIT_FAILURE);
@@ -282,8 +309,8 @@ int main(int argc, char *argv[]) {
 			perror("epoll_ctl");
 			return 1;
 		}
-
-		send_simple_string(master_fd, "ping");
+		char *command[] = {"ping"};
+		send_arr_of_bulk_string(master_fd, command, 1);
 	}
 
 	for (;;) {

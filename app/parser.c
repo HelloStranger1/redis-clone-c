@@ -98,13 +98,31 @@ static RespData* parse_resp_bool(char** c) {
     return resp;
 }
 
+static RespData* parse_resp_simple_string(char **c) {
+    RespData* resp = malloc(sizeof(*resp));
+
+    if (!resp) {
+        die("Couldn't allocate memory");
+    }
+
+    resp->type = RESP_SIMPLE_STRING;
+
+    char *end = strstr(*c, "\r\n");
+    *end = '\0';
+    resp->as.simple_str = strdup(*c);
+
+    *c = end + 2;
+
+    return resp;
+
+}
+
 RespData* parse_resp_data(char** input) { 
     char type = **input;
     (*input)++;
     switch (type) {
         case '+': 
-            printf("simple strings not yet implemented");
-            return NULL;
+            return parse_resp_simple_string(input);
         case '-': 
             printf("Errors not yet implemented");
             return NULL;
@@ -179,6 +197,7 @@ char *encode_resp_integer(int resp_int) {
 
     return encoded_ptr;
 }
+
 
 char *encode_resp_bulk_string(BlkStr* bulk_string) {
     char *encoded_ptr;
