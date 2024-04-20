@@ -196,6 +196,7 @@ int handle_client_connection(int client_fd) {
 				break;
 			}
 		}
+
 		if(data->type != RESP_ARRAY) {
 			printf("Expected array");
 			exit(EXIT_FAILURE);
@@ -208,6 +209,12 @@ int handle_client_connection(int client_fd) {
 		}
 
 		printf("We parsed %s\n", AS_BLK_STR(command)->chars);
+		if (!meta_data.is_replica && (strcasecmp(AS_BLK_STR(command)->chars, SET_CMD) == 0)) {
+			// We propegate the command.
+			for (int i = 0; i < meta_data.replica_count; i++) {
+				send(meta_data.replicas_fd[i], buffer, count, 0);
+			}
+		}
 
 		run_command(client_fd, AS_BLK_STR(command), AS_ARR(data));
 		free_data(data);
@@ -362,11 +369,12 @@ int main(int argc, char *argv[]) {
 						perror("epoll_ctl");
 						return 1;
 					}
-
 				}
 				continue;
 			} else {
+
 				int done = handle_client_connection(events[i].data.fd);
+
 				// We only want to close the connection if its a client and not the master
 				if (done == 1 && !(meta_data.is_replica && master_meta_data.master_fd == events[i].data.fd)) {
 					printf("Closed connection on descriptor %d\n", events[i].data.fd);
