@@ -192,11 +192,15 @@ int handle_client_connection(int client_fd) {
 				send_arr_of_bulk_string(client_fd, response, 3);
 				continue;
 			} else if (step_at_handshake == 3) {
-				// For now we ignore.
-				break;
+				// This should be the rdb file from master
+				step_at_handshake = 4;
+				free_data(data);
+
+				// Proccess RDB file and apply it to our state
+				return 0;	
 			}
 		}
-
+		
 		if(data->type != RESP_ARRAY) {
 			printf("Expected array");
 			exit(EXIT_FAILURE);
