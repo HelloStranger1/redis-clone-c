@@ -406,6 +406,7 @@ int main(int argc, char *argv[]) {
 						printf("We parsed %s\n", AS_BLK_STR(command)->chars);
 
 						run_command(master_fd, AS_BLK_STR(command), AS_ARR(data));
+						meta_data.replication_offset += count;
 						free_data(data);
 					}
 					
@@ -599,6 +600,11 @@ void run_command(int client_fd, BlkStr *command, DataArr* args) {
 
 			printf("Replica has capability %s\n", arg2->chars);
 			send_simple_string(client_fd, "OK");
+		} else if (!strcasecmp(arg1->chars, "GETACK")) {
+			char replica_offset_str[10];
+			sprintf(replica_offset_str, "%d", meta_data.replication_offset);
+			char *response[3] = {REPLCONF_CMD, "ACK", replica_offset_str};
+			send_arr_of_bulk_string(client_fd, response, 3);
 		}
 		return;
 	}
@@ -615,6 +621,7 @@ void run_command(int client_fd, BlkStr *command, DataArr* args) {
 		return;
 
 	}
+
 	fprintf(stderr, "-ERR unkown command '%s'", command->chars);
 	
 
