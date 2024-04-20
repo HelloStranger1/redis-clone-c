@@ -536,7 +536,14 @@ void run_command(int client_fd, BlkStr *command, DataArr* args) {
 	}
 
 	if (!strcasecmp(command->chars, PSYNC_CMD)) {
+		BlkStr *arg_id = AS_BLK_STR(args->values[1]);
+		BlkStr *arg_offset = AS_BLK_STR(args->values[2]);
+
+		char response[REPLICATION_ID_LEN + 20];
+		sprintf(response, "FULLRESYNC %s %d", meta_data.replication_id, meta_data.replication_offset);
+		send_simple_string(client_fd, response);
 		return;
+
 	}
 	fprintf(stderr, "-ERR unkown command '%s'", command->chars);
 	
