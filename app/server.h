@@ -20,6 +20,7 @@ struct MasterMetadata {
     char* master_host;
     int master_port;
     int master_fd;
+    int master_offset;
     char master_replication_id[REPLICATION_ID_LEN + 1];
 
 };

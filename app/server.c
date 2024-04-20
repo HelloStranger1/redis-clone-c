@@ -360,14 +360,32 @@ int main(int argc, char *argv[]) {
 					}
 
 					char *ptr = buffer;
-					
 					// Master doesn't wait for response, so we might have more than one command here, so we keep parsing
 					while (*ptr != '\0') {
+						if (step_at_handshake == 4) {
+							// We got the rdb.
+							printf("We got the rdb. rdb is: \n %s \n", ptr);
+							ptr++; // Skip the $
+							char *prev = ptr;
+							while(*ptr != '\r') {
+								ptr++;
+							}
+							*ptr = '\0';
+							int len = atoi(prev);
+							*ptr = '\r';
+							ptr += 2 + len;
+
+							step_at_handshake = 5;
+							continue;
+
+						}
+						char *prev = ptr;
 						RespData *data = parse_resp_data(&ptr);
 
 						if (data->type == RESP_SIMPLE_STRING) {
 							// This is the handshake. Here the master waits for a response, so we can just exit after reading.
-							if (!strcasecmp(data->as.simple_str, "pong")) { step_at_handshake = 1;
+							if (!strcasecmp(data->as.simple_str, "pong")) { 
+								step_at_handshake = 1;
 								char *response[] = {REPLCONF_CMD, "listening-port", meta_data.port};
 								send_arr_of_bulk_string(master_fd, response, 3);
 								free_data(data);
@@ -385,28 +403,30 @@ int main(int argc, char *argv[]) {
 								free_data(data);
 								break;
 							} else if (step_at_handshake == 3) {
-								// This should be the rdb file from master
+								// This is +FULLRESYNC <REPL_ID> 0\r\n
+								sscanf(data->as.simple_str, "FULLRESYNC %s %d", master_meta_data.master_replication_id, &master_meta_data.master_offset);
 								step_at_handshake = 4;
 								free_data(data);
-								break;
+								continue;
 							}
 						}
+						
 
 						if(data->type != RESP_ARRAY) {
-							printf("Expected array");
+							printf("Expected array\n");
 							break;
 						}
 
 						RespData* command = data->as.arr->values[0];
 
 						if (command->type != RESP_BULK_STRING) {
-							printf("Command should be a bulk string");
+							printf("Command should be a bulk string\n");
 							break;
 						}
 						printf("We parsed %s\n", AS_BLK_STR(command)->chars);
 
 						run_command(master_fd, AS_BLK_STR(command), AS_ARR(data));
-						meta_data.replication_offset += count;
+						meta_data.replication_offset += (ptr - prev);
 						free_data(data);
 					}
 					
@@ -436,9 +456,8 @@ void send_empty_rdb(int client_fd) {
 	size_t rdb_bin_len = hexs2bin(empty_rdb_hex, &empty_rdb_bin);
 
 	char prefix[32];
-	sprintf(prefix, "$%zu\r\n", rdb_bin_len);
-	
-	size_t prefix_len = + strlen(prefix);
+	size_t prefix_len = sprintf(prefix, "$%zu\r\n", rdb_bin_len);
+
 
 	char *rdb_file_response = (char *) malloc((rdb_bin_len + prefix_len) * sizeof(char));
 	strcpy(rdb_file_response, prefix);
