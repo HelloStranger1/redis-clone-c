@@ -1,7 +1,7 @@
 #ifndef redis_data_h
 #define redis_data_h
 
-#include "common.h"
+#include "utils.h"
 
 typedef enum {
     RESP_SIMPLE_STRING,

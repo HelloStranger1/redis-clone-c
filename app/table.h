@@ -3,7 +3,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
-#include "common.h"
+#include "utils.h"
 
 typedef uint32_t hashfunction (const char*, size_t);
 typedef void cleanupfunction(void *);

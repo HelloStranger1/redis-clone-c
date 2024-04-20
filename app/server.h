@@ -1,7 +1,7 @@
 #ifndef redis_server_h
 #define redis_server_h
 
-#include "common.h"
+#include "utils.h"
 
 
 #define REPLICATION_ID_LEN 40

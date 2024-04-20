@@ -383,6 +383,27 @@ int main(int argc, char *argv[]) {
 	return 0;
 }
 
+void send_empty_rdb(int client_fd) {
+	char empty_rdb_hex[] = "524544495330303131fa0972656469732d76657205372e322e30fa0a72656469732d62697473c040fa056374696d65c26d08bc65fa08757365642d6d656dc2b0c41000fa08616f662d62617365c000fff06e3bfec0ff5aa2";
+
+	unsigned char *empty_rdb_bin;
+	size_t rdb_bin_len = hexs2bin(empty_rdb_hex, &empty_rdb_bin);
+
+	char prefix[32];
+	sprintf(prefix, "$%zu\r\n", rdb_bin_len);
+	
+	size_t prefix_len = + strlen(prefix);
+
+	char *rdb_file_response = (char *) malloc((rdb_bin_len + prefix_len) * sizeof(char));
+	strcpy(rdb_file_response, prefix);
+	memcpy(rdb_file_response + prefix_len, empty_rdb_bin, rdb_bin_len);
+
+	send(client_fd, rdb_file_response, prefix_len + rdb_bin_len, 0);
+
+	free(rdb_file_response);
+	free(empty_rdb_bin);
+}
+
 void run_set(int socket_fd, RespData *key, RespData *value, DataArr *args, bool should_responde) {
 	int i = 3; // Start of arguments
 	/**
@@ -542,6 +563,8 @@ void run_command(int client_fd, BlkStr *command, DataArr* args) {
 		char response[REPLICATION_ID_LEN + 20];
 		sprintf(response, "FULLRESYNC %s %d", meta_data.replication_id, meta_data.replication_offset);
 		send_simple_string(client_fd, response);
+
+		send_empty_rdb(client_fd);
 		return;
 
 	}

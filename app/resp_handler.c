@@ -2,9 +2,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "common.h"
-#include "data.h"
-#include "parser.h"
 #include "resp_handler.h"
 
 
@@ -38,7 +35,7 @@ int send_bulk_string(int client_fd, char *str) {
 
 int send_arr_of_bulk_string(int client_fd, char *strings[], int count) {
     char arr_len[10]; 
-    sprintf(arr_len, "*%d\r\n");
+    sprintf(arr_len, "*%d\r\n", count);
     send(client_fd, arr_len, strlen(arr_len), 0);
     for (int i = 0; i < count; i++) {
         send_bulk_string(client_fd, strings[i]);

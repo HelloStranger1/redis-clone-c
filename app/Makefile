@@ -1,7 +1,7 @@
 CC=gcc
 CFLAGS=-I. -g -Wall
-DEPS = parser.h common.h data.h table.h resp_handler.h server.h 
-OBJ = parser.o data.o table.o common.o resp_handler.o 
+DEPS = parser.h utils.h data.h table.h resp_handler.h server.h 
+OBJ = parser.o data.o table.o utils.o resp_handler.o 
 
 %.o: %.c $(DEPS)
 	$(CC) -c -o $@ $< $(CFLAGS)

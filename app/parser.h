@@ -3,7 +3,7 @@
 
 #define MAX_ARRAY_SIZE 64
 
-#include "common.h"
+#include "utils.h"
 #include "data.h"
 
 RespData* parse_resp_data(char** input);
