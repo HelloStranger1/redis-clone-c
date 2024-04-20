@@ -17,7 +17,7 @@
 #include "server.h"
 
 #define BUFFER_SIZE 1024
-#define MAX_EVENTS 64
+#define MAX_EVENTS 512
 #define DEFAULT_PORT "6379"
 #define HASH_TABLE_SIZE (uint32_t) 512
 
@@ -161,7 +161,6 @@ int handle_client_connection(int client_fd) {
 			}
 			break;
 		} else if (count == 0) {
-			done = 1;
 			break;
 		}
 		printf("Recieved message: %s\n", buffer);
@@ -169,37 +168,6 @@ int handle_client_connection(int client_fd) {
 		char* tmp = buffer;
 
 		RespData* data = parse_resp_data(&tmp);
-
-		if (data->type == RESP_SIMPLE_STRING) {
-			// We check that it is from master
-			if (!(meta_data.is_replica && client_fd == master_meta_data.master_fd)) {
-				printf("Expected array");
-				exit(EXIT_FAILURE);
-			}
-			if (!strcasecmp(data->as.simple_str, "pong")) {
-				step_at_handshake = 1;
-				char *response[] = {REPLCONF_CMD, "listening-port", meta_data.port};
-				send_arr_of_bulk_string(client_fd, response, 3);
-				continue;
-			} else if (step_at_handshake == 1) {
-				step_at_handshake = 2;
-				char *response[] = {REPLCONF_CMD, "capa", "psync2"};
-				send_arr_of_bulk_string(client_fd, response, 3);
-				continue;
-			} else if (step_at_handshake == 2) {
-				step_at_handshake = 3;
-				char *response[] = {PSYNC_CMD, "?", "-1"};
-				send_arr_of_bulk_string(client_fd, response, 3);
-				continue;
-			} else if (step_at_handshake == 3) {
-				// This should be the rdb file from master
-				step_at_handshake = 4;
-				free_data(data);
-
-				// Proccess RDB file and apply it to our state
-				return 0;	
-			}
-		}
 		
 		if(data->type != RESP_ARRAY) {
 			printf("Expected array");
@@ -375,12 +343,77 @@ int main(int argc, char *argv[]) {
 					}
 				}
 				continue;
-			} else {
+			} else if (meta_data.is_replica && master_meta_data.master_fd == events[i].data.fd) {
+				
+				int master_fd = events[i].data.fd;
+				for (;;) {
+					ssize_t count;
+					char buffer[BUFFER_SIZE] = {0};
+					count = read(master_fd, buffer, sizeof(buffer));
+					if (count == -1) {
+						if (errno != EAGAIN) {
+							perror("read");
+						}
+						break;
+					} else if (count == 0) {
+						break;
+					}
 
+					char *ptr = buffer;
+					
+					// Master doesn't wait for response, so we might have more than one command here, so we keep parsing
+					while (*ptr != '\0') {
+						RespData *data = parse_resp_data(&ptr);
+
+						if (data->type == RESP_SIMPLE_STRING) {
+							// This is the handshake. Here the master waits for a response, so we can just exit after reading.
+							if (!strcasecmp(data->as.simple_str, "pong")) { step_at_handshake = 1;
+								char *response[] = {REPLCONF_CMD, "listening-port", meta_data.port};
+								send_arr_of_bulk_string(master_fd, response, 3);
+								free_data(data);
+								break;
+							} else if (step_at_handshake == 1) {
+								step_at_handshake = 2;
+								char *response[] = {REPLCONF_CMD, "capa", "psync2"};
+								send_arr_of_bulk_string(master_fd, response, 3);
+								free_data(data);
+								break;
+							} else if (step_at_handshake == 2) {
+								step_at_handshake = 3;
+								char *response[] = {PSYNC_CMD, "?", "-1"};
+								send_arr_of_bulk_string(master_fd, response, 3);
+								free_data(data);
+								break;
+							} else if (step_at_handshake == 3) {
+								// This should be the rdb file from master
+								step_at_handshake = 4;
+								free_data(data);
+								break;
+							}
+						}
+
+						if(data->type != RESP_ARRAY) {
+							printf("Expected array");
+							break;
+						}
+
+						RespData* command = data->as.arr->values[0];
+
+						if (command->type != RESP_BULK_STRING) {
+							printf("Command should be a bulk string");
+							break;
+						}
+						printf("We parsed %s\n", AS_BLK_STR(command)->chars);
+
+						run_command(master_fd, AS_BLK_STR(command), AS_ARR(data));
+						free_data(data);
+					}
+					
+				}
+			} else {
 				int done = handle_client_connection(events[i].data.fd);
 
-				// We only want to close the connection if its a client and not the master
-				if (done == 1 && !(meta_data.is_replica && master_meta_data.master_fd == events[i].data.fd)) {
+				if (done == 1) {
 					printf("Closed connection on descriptor %d\n", events[i].data.fd);
 					close(events[i].data.fd);
 				}
@@ -533,8 +566,10 @@ void run_command(int client_fd, BlkStr *command, DataArr* args) {
 
 	if (!strcasecmp(command->chars, GET_CMD)) {
 		BlkStr* key = AS_BLK_STR(args->values[1]);
+		printf("Trying to get with key %s", key->chars);
 		void *value = hash_table_get(ht, key->chars);
 		if (value == NULL) {
+			printf("Got null from get");
 			send(client_fd, "$-1\r\n", strlen("$-1\r\n"), 0);
 			return;
 		}
